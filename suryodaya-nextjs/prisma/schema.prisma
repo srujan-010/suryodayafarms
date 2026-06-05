@@ -1,0 +1,370 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  COD
+  RAZORPAY
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FLAT
+}
+
+model User {
+  id           String         @id @default(cuid())
+  name         String?
+  email        String         @unique
+  passwordHash String
+  role         Role           @default(CUSTOMER)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  addresses         Address[]
+  orders            Order[]
+  cartItems         CartItem[]
+  wishlistItems     WishlistItem[]
+  reviews           Review[]
+  notifications     Notification[]
+  sessions          Session[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Address {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String   // e.g., "Home", "Office"
+  recipientName String
+  phone         String
+  street        String
+  city          String
+  state         String
+  postalCode    String
+  country       String   @default("India")
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Category {
+  id              String    @id @default(uuid())
+  name            String    @unique
+  slug            String    @unique
+  description     String?
+  image           String?
+  seoTitle        String?
+  seoDescription  String?
+  isVisible       Boolean   @default(true)
+  homepageVisible Boolean   @default(true)
+  promoVisible    Boolean   @default(true)
+  position        Int       @default(0)
+  isFeatured      Boolean   @default(false)
+  products        Product[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Product {
+  id             String           @id @default(uuid())
+  name           String
+  slug           String           @unique
+  categories     Category[]
+  description    String           // Acts as long description
+  shortDescription String?
+  brand          String?          @default("Suryodaya Farms")
+  productType    String?
+  price          Float            // Acts as active Sale Price
+  compareAtPrice Float?           // Serves as dynamic compare price
+  mrp            Float?           // Explicit MRP
+  discountPercent Float?          @default(0)
+  taxPercent     Float?           @default(0)
+  stockStatus    String?          @default("IN_STOCK")
+  sku            String           @unique
+  inventory      Int              @default(0)
+  hoverImage     String?
+  mobileBanner   String?
+  isFeatured     Boolean          @default(false)
+  isTrending     Boolean          @default(false)
+  isBestseller   Boolean          @default(false)
+  isNewLaunch    Boolean          @default(false)
+  isVisible      Boolean          @default(true)
+  isComingSoon   Boolean          @default(false)
+  nutrients      String?
+  origin         String?
+  shelfLife      String?
+  deliveryEta    String?          @default("2-3 Days")
+  codAvailable   Boolean          @default(true)
+  returnEligible Boolean          @default(false)
+  weight         String?
+  seoTitle       String?
+  seoDescription String?
+  seoKeywords    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  images         ProductImage[]
+  variants       ProductVariant[]
+  cartItems      CartItem[]
+  wishlistItems  WishlistItem[]
+  orderItems     OrderItem[]
+  reviews        Review[]
+}
+
+model ProductImage {
+  id         String   @id @default(uuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url        String
+  isFeatured Boolean  @default(false)
+}
+
+model ProductVariant {
+  id         String      @id @default(uuid())
+  productId  String
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name       String      // e.g. "500ml", "1 Kg", "1 Liter"
+  price      Float
+  inventory  Int         @default(0)
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+}
+
+model CartItem {
+  id        String          @id @default(uuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product         @relation(fields: [productId], references: [id])
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+  quantity  Int             @default(1)
+  createdAt DateTime        @default(now())
+}
+
+model WishlistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model Coupon {
+  id             String       @id @default(uuid())
+  code           String       @unique
+  discountType   DiscountType @default(PERCENTAGE)
+  discountValue  Float
+  minOrderValue  Float        @default(0)
+  expiryDate     DateTime
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  orders         Order[]
+}
+
+model Order {
+  id                String        @id @default(uuid())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+  orderNumber       String        @unique
+  status            OrderStatus   @default(PENDING)
+  paymentStatus     PaymentStatus @default(PENDING)
+  paymentMethod     PaymentMethod @default(COD)
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  totalAmount       Float
+  discountAmount    Float         @default(0)
+  couponId          String?
+  coupon            Coupon?       @relation(fields: [couponId], references: [id])
+  shippingAddress   Json          // Save serialized address details
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  orderItems        OrderItem[]
+}
+
+model OrderItem {
+  id        String          @id @default(uuid())
+  orderId   String
+  order     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product         @relation(fields: [productId], references: [id])
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+  quantity  Int
+  price     Float
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating    Int      @default(5)
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Blog {
+  id        String   @id @default(uuid())
+  title     String
+  slug      String   @unique
+  content   String
+  summary   String
+  image     String
+  category  String
+  author    String
+  readTime  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Testimonial {
+  id        String   @id @default(uuid())
+  name      String
+  role      String
+  review    String
+  avatar    String
+  rating    Int      @default(5)
+  tag       String
+  createdAt DateTime @default(now())
+}
+
+model Gallery {
+  id          String   @id @default(uuid())
+  title       String
+  category    String
+  image       String
+  description String
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model ContactMessage {
+  id        String   @id @default(uuid())
+  name      String
+  email     String
+  phone     String
+  type      String
+  message   String
+  createdAt DateTime @default(now())
+}
+
+model SEOSetting {
+  id          String @id @default(uuid())
+  page        String @unique // e.g. "home", "products"
+  title       String
+  description String
+  keywords    String
+}
+
+model WebsiteSetting {
+  id    String @id @default(uuid())
+  key   String @unique // e.g. "phone", "email"
+  value String
+}
+
+model HomepageCampaign {
+  id                   String    @id @default(uuid())
+  title                String
+  subtitle             String
+  description          String
+  heroImage            String
+  featuredProductId    String?
+  discountText         String?
+  primaryButtonText    String    @default("Shop Now")
+  primaryButtonLink    String    @default("/")
+  secondaryButtonText  String?   @default("Explore Collection")
+  secondaryButtonLink  String?   @default("/")
+  badgeText            String?
+  isActive             Boolean   @default(false)
+  startDate            DateTime?
+  endDate              DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model HomepageHero {
+  id                    String @id @default(uuid())
+
+  trustBadgeText        String?
+  headingLine1          String?
+  headingHighlight      String?
+  headingLine2          String?
+
+  description           String?
+
+  bulletOne             String?
+  bulletTwo             String?
+  bulletThree           String?
+  bulletFour            String?
+
+  primaryButtonText     String?
+  primaryButtonLink     String?
+
+  secondaryButtonText   String?
+  secondaryButtonLink   String?
+
+  promoText             String?
+
+  heroImage             String?
+
+  featuredProductId     String?
+
+  offerBadgeText        String?
+
+  floatingBadgeTitle    String?
+  floatingBadgeSubtitle String?
+
+  isActive              Boolean @default(true)
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
