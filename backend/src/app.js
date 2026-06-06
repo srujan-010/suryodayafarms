@@ -9,6 +9,14 @@ dotenv.config();
 
 const app = express();
 
+app.get("/", (req, res) => {
+  res.send("API WORKING");
+});
+
+app.get("/products", (req, res) => {
+  res.json([{ name: "Test Product" }]);
+});
+
 // 1. Security Headers Configuration
 app.use(helmet());
 
@@ -16,6 +24,14 @@ app.use(helmet());
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
   : ['http://localhost:5173'];
+
+// Ensure production domains are always allowed
+if (!allowedOrigins.includes('https://suryodayafarms.com')) {
+  allowedOrigins.push('https://suryodayafarms.com');
+}
+if (!allowedOrigins.includes('https://www.suryodayafarms.com')) {
+  allowedOrigins.push('https://www.suryodayafarms.com');
+}
 
 app.use(cors({
   origin: (origin, callback) => {
