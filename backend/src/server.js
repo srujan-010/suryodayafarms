@@ -17,7 +17,7 @@ filesToClean.forEach(file => {
   }
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 // Verify database connection on startup
 prisma.$connect()
@@ -29,14 +29,9 @@ prisma.$connect()
     console.error("Database connection failed:", err.message);
   });
 
-const server = app.listen(PORT, () => {
-  console.log(`=======================================================`);
-  console.log(`  SURYODAYA FARMS - FULL-STACK PREMIUM E-COMMERCE API  `);
-  console.log(`  Server started`); // Log exactly what is requested
-  console.log(`  Port running on: ${PORT}`); // Log exactly what is requested
-  console.log(`  Running on Port: ${PORT} | Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`  URL: http://localhost:${PORT}`);
-  console.log(`=======================================================`);
+const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Server started`);
 });
 
 // Capture fatal promise errors and crash safely
