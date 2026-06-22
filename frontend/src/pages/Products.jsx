@@ -168,7 +168,8 @@ export default function Products() {
   const fetchCategories = async () => {
     try {
       const response = await api.get('/products/categories');
-      setCategories([{ id: 'All', name: 'All', slug: 'All' }, ...(response.categories || [])]);
+      const filtered = (response.categories || []).filter(c => c.slug !== 'uncategorized');
+      setCategories([{ id: 'All', name: 'All', slug: 'All' }, ...filtered]);
     } catch (err) {
       console.error(err);
     }
@@ -176,7 +177,7 @@ export default function Products() {
 
   const fetchCounts = async () => {
     try {
-      const response = await api.get('/products?limit=100'); // Fetch all products for dynamic count
+      const response = await api.get('/products'); // Fetch all products for dynamic count
       const allProds = response.products || [];
       const counts = { all: allProds.length };
       allProds.forEach((p) => {
@@ -206,12 +207,19 @@ export default function Products() {
   const fetchProducts = async () => {
     setIsLoading(true);
     try {
-      const categoryParam = selectedCategory.id !== 'All' ? `&category=${selectedCategory.slug}` : '';
-      const searchParam = searchQuery ? `&search=${searchQuery}` : '';
-      const sortParam = sortBy !== 'newest' ? `&sort=${sortBy}` : '';
+      const params = new URLSearchParams();
+      if (selectedCategory.id !== 'All') params.append('category', selectedCategory.slug);
+      if (searchQuery) params.append('search', searchQuery);
+      if (sortBy !== 'newest') params.append('sort', sortBy);
 
-      const response = await api.get(`/products?limit=20${categoryParam}${searchParam}${sortParam}`);
-      setProductsList(response.products || []);
+      const response = await api.get(`/products?${params.toString()}`);
+      const fetchedProducts = response.products || [];
+      setProductsList(fetchedProducts);
+
+      console.log(`[Storefront Product Logs] Total products in database: ${response.totalCount || fetchedProducts.length}`);
+      console.log(`[Storefront Product Logs] Total products returned by API: ${fetchedProducts.length}`);
+      console.log(`[Storefront Product Logs] Total products rendered on screen: ${fetchedProducts.length}`);
+
       setIsLoading(false);
     } catch (err) {
       console.error(err);
@@ -577,8 +585,26 @@ export default function Products() {
                 <FiShoppingBag className="w-5 h-5" />
               </div>
               <div className="flex flex-col text-left">
-                <span className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#C68A2B]">Your Organic Basket</span>
-                <span className="text-xs font-serif font-bold mt-0.5">{totalCartCount} {totalCartCount === 1 ? 'item' : 'items'} • ₹{subtotal}</span>
+                <span className="text-[10px] font-sans font-bold uppercase tracking-widest text-[#C68A2B] mb-0.5">Your Organic Basket</span>
+                {cartItems.length === 1 ? (
+                  <div className="flex flex-col">
+                    <span className="text-xs font-serif font-bold truncate max-w-[190px]">
+                      {cartItems[0].product?.name || 'Item'} × {cartItems[0].quantity}
+                    </span>
+                    <span className="text-[11px] font-sans font-bold text-white/95 mt-0.5">₹{subtotal}</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-0.5 max-h-24 overflow-y-auto custom-scroll pr-1">
+                    <span className="text-xs font-serif font-bold">{cartItems.length} Items • ₹{subtotal}</span>
+                    <div className="space-y-0.5 mt-1 border-t border-white/15 pt-1">
+                      {cartItems.map((item, idx) => (
+                        <div key={idx} className="text-[10px] text-white/85 truncate max-w-[210px] font-sans font-medium">
+                          {item.product?.name || 'Item'} × {item.quantity}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <button

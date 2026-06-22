@@ -64,6 +64,11 @@ export default function CategoryCollection() {
 
   const fetchCategoryAndProducts = async () => {
     setIsLoading(true);
+    if (slug === 'uncategorized') {
+      setCategory(null);
+      setIsLoading(false);
+      return;
+    }
     try {
       // 1. Fetch category metadata
       const catResponse = await api.get(`/products/categories/${slug}`);
@@ -84,7 +89,7 @@ export default function CategoryCollection() {
       // 2. Fetch products linked to this category
       const sortParam = sortBy !== 'newest' ? `&sort=${sortBy}` : '';
       // We pass the category slug to backend products endpoint
-      const prodResponse = await api.get(`/products?limit=40&category=${catData.slug}${sortParam}`);
+      const prodResponse = await api.get(`/products?category=${catData.slug}${sortParam}`);
       setProductsList(prodResponse.products || []);
     } catch (err) {
       console.error("Failed to load collection data:", err);

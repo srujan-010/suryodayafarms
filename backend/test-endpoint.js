@@ -2,7 +2,7 @@ import axios from 'axios';
 
 async function test() {
   try {
-    const response = await axios.get('http://localhost:5000/api/products?limit=100');
+    const response = await axios.get('https://suryodayafarms.onrender.com/api/products?limit=100');
     console.log("Success:", response.data.success);
     console.log("Count:", response.data.count);
     if (response.data.products) {

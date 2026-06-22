@@ -1,4 +1,3 @@
-```js
 import app from './app.js';
 import prisma from './utils/db.js';
 
@@ -29,4 +28,4 @@ process.on('unhandledRejection', (err) => {
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
 });
-```
+

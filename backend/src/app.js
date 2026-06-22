@@ -62,7 +62,7 @@ app.use(cookieParser());
 // 4. Rate Limiting to prevent API abuse
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'development' ? 10000 : 300, // Relax limits in development
+  max: process.env.NODE_ENV === 'development' ? 10000 : 5000, // Relax limits in development/production testing
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: 'Too many requests from this IP, please try again later.' }

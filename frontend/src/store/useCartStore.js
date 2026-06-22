@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api from '../utils/api';
 import { useModalStore } from './useModalStore';
+import { useFeedbackStore } from './useFeedbackStore';
 
 export const useCartStore = create((set, get) => ({
   cartItems: [],
@@ -56,23 +57,10 @@ export const useCartStore = create((set, get) => ({
         isLoading: false
       });
 
-      if (!silent) {
-        // Show beautiful premium confirmation modal
-        useModalStore.getState().alert(
-          'Added to Basket 🛒',
-          `"${realProductName}" has been added to your organic basket successfully!`,
-          'success'
-        );
-      }
+      useFeedbackStore.getState().showToast(`✅ ${realProductName} added to cart`, 'success');
     } catch (error) {
       set({ error: error.message, isLoading: false });
-      if (!silent) {
-        useModalStore.getState().alert(
-          'Action Failed',
-          error.message,
-          'error'
-        );
-      }
+      useFeedbackStore.getState().showToast(`❌ Failed to add item: ${error.message}`, 'error');
       throw error;
     }
   },
@@ -96,8 +84,10 @@ export const useCartStore = create((set, get) => ({
         cartItems: updatedItems,
         subtotal: sub,
       });
+      useFeedbackStore.getState().showToast('✅ Basket updated successfully', 'success');
     } catch (error) {
       set({ error: error.message });
+      useFeedbackStore.getState().showToast(`❌ Failed to update quantity: ${error.message}`, 'error');
       throw error;
     }
   },
@@ -113,8 +103,10 @@ export const useCartStore = create((set, get) => ({
         cartItems: remainingItems,
         subtotal: sub,
       });
+      useFeedbackStore.getState().showToast('✅ Item removed from basket', 'success');
     } catch (error) {
       set({ error: error.message });
+      useFeedbackStore.getState().showToast(`❌ Failed to remove item: ${error.message}`, 'error');
       throw error;
     }
   },

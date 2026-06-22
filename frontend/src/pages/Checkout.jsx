@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { useCartStore } from '../store/useCartStore';
 import { useModalStore } from '../store/useModalStore';
+import { useFeedbackStore } from '../store/useFeedbackStore';
 import { FiMapPin, FiCreditCard, FiTag, FiShoppingBag, FiCheckCircle } from 'react-icons/fi';
 import { FaWhatsapp } from 'react-icons/fa';
 import { GiSun } from 'react-icons/gi';
@@ -104,11 +105,12 @@ export default function Checkout() {
 
   const handlePlaceOrder = async () => {
     if (!selectedAddressId) {
-      modal.alert('Select Shipping Address', 'Please save and select a shipping address before completing your purchase.', 'warning');
+      useFeedbackStore.getState().showToast('⚠️ Please select a shipping address before completing your purchase.', 'warning');
       return;
     }
 
     setIsProcessing(true);
+    useFeedbackStore.getState().showLoader('Processing checkout...');
     try {
       const response = await api.post('/orders/checkout', {
         addressId: selectedAddressId,
@@ -122,13 +124,18 @@ export default function Checkout() {
         clearCart();
         sessionStorage.removeItem('appliedCoupon');
         setIsProcessing(false);
+        useFeedbackStore.getState().hideLoader();
+        useFeedbackStore.getState().showToast('✅ Order placed successfully', 'success');
       } else {
         // Razorpay Payment Simulation sandbox trigger
         simulateRazorpaySandbox(response);
+        setIsProcessing(false);
+        useFeedbackStore.getState().hideLoader();
       }
     } catch (err) {
-      modal.alert('Checkout Failed', err.message, 'error');
+      useFeedbackStore.getState().showToast(`❌ Checkout failed: ${err.message}`, 'error');
       setIsProcessing(false);
+      useFeedbackStore.getState().hideLoader();
     }
   };
 
@@ -143,6 +150,7 @@ export default function Checkout() {
 
   const handleVerifyRazorpaySandboxPayment = async () => {
     setIsProcessing(true);
+    useFeedbackStore.getState().showLoader('Verifying gateway signature...');
     try {
       await api.post('/orders/verify-payment', {
         razorpayOrderId: orderSuccessDetails.razorpayOrderId,
@@ -159,9 +167,12 @@ export default function Checkout() {
       clearCart();
       sessionStorage.removeItem('appliedCoupon');
       setIsProcessing(false);
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast('✅ Order placed successfully', 'success');
     } catch (err) {
-      modal.alert('Payment Verification Failed', err.message, 'error');
+      useFeedbackStore.getState().showToast(`❌ Payment verification failed: ${err.message}`, 'error');
       setIsProcessing(false);
+      useFeedbackStore.getState().hideLoader();
     }
   };
 
@@ -242,7 +253,7 @@ export default function Checkout() {
             disabled={isProcessing}
             className="w-full font-sans text-xs font-semibold tracking-widest uppercase bg-[#C68A2B] text-dark-olive py-4 rounded-xl hover:bg-dark-olive hover:text-white transition-all shadow-md cursor-pointer"
           >
-            {isProcessing ? 'Verifying Gateway Signature...' : 'Authorize Sandbox Payment'}
+            {isProcessing ? 'Processing...' : 'Authorize Sandbox Payment'}
           </button>
         </div>
       </div>
@@ -469,7 +480,7 @@ export default function Checkout() {
             disabled={isProcessing || cartItems.length === 0}
             className="w-full bg-primary-green hover:bg-dark-olive disabled:bg-primary-green/55 text-white font-sans text-xs font-semibold uppercase tracking-widest py-4 rounded-xl transition-colors duration-300 shadow-md text-center flex items-center justify-center gap-2 mt-4 cursor-pointer"
           >
-            {isProcessing ? 'Processing Checkout...' : `Confirm Purchase (₹${grandTotal})`}
+            {isProcessing ? 'Processing...' : `Confirm Purchase (₹${grandTotal})`}
           </button>
         </div>
 

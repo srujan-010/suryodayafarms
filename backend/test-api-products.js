@@ -1,6 +1,6 @@
 async function main() {
   try {
-    const res = await fetch('http://localhost:5000/api/products?limit=100');
+    const res = await fetch('https://suryodayafarms.onrender.com/api/products?limit=100');
     const data = await res.json();
     console.log("API response success:", data.success);
     console.log("API products count:", data.products?.length);

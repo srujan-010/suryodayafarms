@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAdminAuthStore } from '../store/useAdminAuthStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useModalStore } from '../store/useModalStore';
+import { useFeedbackStore } from '../store/useFeedbackStore';
 import EmptyState from '../components/EmptyState';
 import { 
   FiHome, 
@@ -66,6 +67,9 @@ export default function AdminDashboard() {
 
   // Custom promise-based Modal
   const modal = useModalStore();
+
+  // Global feedback loading state
+  const { isLoading: isGlobalLoading } = useFeedbackStore();
 
   // Form errors for custom inline validations
   const [productFormErrors, setProductFormErrors] = useState({});
@@ -435,16 +439,22 @@ export default function AdminDashboard() {
     e.preventDefault();
     setIsSavingSettings(true);
     setSettingsMessage('');
+    useFeedbackStore.getState().showLoader('Saving settings...');
     try {
       const success = await updateSettings(settingsForm);
+      useFeedbackStore.getState().hideLoader();
       if (success) {
         setSettingsMessage('Settings updated successfully!');
         setTimeout(() => setSettingsMessage(''), 3000);
+        useFeedbackStore.getState().showToast('✅ Settings saved successfully', 'success');
       } else {
         setSettingsMessage('Failed to update settings.');
+        useFeedbackStore.getState().showToast('❌ Failed to save settings', 'error');
       }
     } catch (err) {
+      useFeedbackStore.getState().hideLoader();
       setSettingsMessage(`Error: ${err.message}`);
+      useFeedbackStore.getState().showToast(`❌ Failed to save settings: ${err.message}`, 'error');
     } finally {
       setIsSavingSettings(false);
     }
@@ -678,6 +688,15 @@ export default function AdminDashboard() {
     variants: []
   });
 
+  const calculateDiscount = (orig, sale) => {
+    const origPrice = parseFloat(orig);
+    const salePrice = parseFloat(sale);
+    if (!isNaN(origPrice) && !isNaN(salePrice) && origPrice > 0 && origPrice > salePrice) {
+      return Math.round(((origPrice - salePrice) / origPrice) * 100);
+    }
+    return 0;
+  };
+
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [categoryForm, setCategoryForm] = useState({
     id: '',
@@ -712,17 +731,25 @@ export default function AdminDashboard() {
   const handleSaveAdminProfile = async (e) => {
     e.preventDefault();
     setProfileMessage('');
+    useFeedbackStore.getState().showLoader('Saving profile...');
     try {
       const response = await api.put('/auth/profile', {
         name: adminNameForm,
         avatarUrl: adminAvatarForm
       });
+      useFeedbackStore.getState().hideLoader();
       if (response.success) {
         setProfileMessage('Profile updated successfully.');
+        useFeedbackStore.getState().showToast('✅ Profile updated successfully', 'success');
         await checkAdminAuth();
+      } else {
+        setProfileMessage('Failed to update profile.');
+        useFeedbackStore.getState().showToast('❌ Failed to update profile', 'error');
       }
     } catch (err) {
+      useFeedbackStore.getState().hideLoader();
       setProfileMessage(err.message || 'Failed to update profile.');
+      useFeedbackStore.getState().showToast(`❌ Failed to update profile: ${err.message}`, 'error');
     }
   };
 
@@ -818,6 +845,7 @@ export default function AdminDashboard() {
     }
     setHeroFormErrors({});
 
+    useFeedbackStore.getState().showLoader('Saving hero layout...');
     try {
       if (heroForm.id) {
         await api.put(`/admin/homepage/hero/${heroForm.id}`, heroForm);
@@ -827,9 +855,11 @@ export default function AdminDashboard() {
       setIsEditingHero(false);
       resetHeroForm();
       fetchHomepageCMSData();
-      modal.alert('Hero Saved', 'Homepage hero configuration has been saved successfully.', 'success');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast('✅ Hero banner saved successfully', 'success');
     } catch (err) {
-      modal.alert('Action Failed', err.message, 'error');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast(`❌ Failed to save hero layout: ${err.message}`, 'error');
     }
   };
 
@@ -842,12 +872,15 @@ export default function AdminDashboard() {
       'Cancel'
     );
     if (confirmed) {
+      useFeedbackStore.getState().showLoader('Deleting hero layout...');
       try {
         await api.delete(`/admin/homepage/hero/${id}`);
         fetchHomepageCMSData();
-        modal.alert('Deleted', 'Homepage hero configuration has been deleted.', 'success');
+        useFeedbackStore.getState().hideLoader();
+        useFeedbackStore.getState().showToast('✅ Hero banner deleted successfully', 'success');
       } catch (err) {
-        modal.alert('Action Failed', err.message, 'error');
+        useFeedbackStore.getState().hideLoader();
+        useFeedbackStore.getState().showToast(`❌ Failed to delete hero layout: ${err.message}`, 'error');
       }
     }
   };
@@ -961,6 +994,7 @@ export default function AdminDashboard() {
     }
     setCollectionFormErrors({});
 
+    useFeedbackStore.getState().showLoader('Saving collection...');
     try {
       if (collectionForm.id) {
         await api.put(`/admin/homepage/collections/${collectionForm.id}`, collectionForm);
@@ -973,9 +1007,11 @@ export default function AdminDashboard() {
       setIsEditingCollection(false);
       resetCollectionForm();
       fetchHomepageCMSData();
-      modal.alert('Collection Saved', 'The signature collection card has been updated successfully.', 'success');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast('✅ Changes published successfully', 'success');
     } catch (err) {
-      modal.alert('Action Failed', err.message, 'error');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast(`❌ Failed to save collection: ${err.message}`, 'error');
     }
   };
 
@@ -988,12 +1024,15 @@ export default function AdminDashboard() {
       'Cancel'
     );
     if (confirmed) {
+      useFeedbackStore.getState().showLoader('Deleting collection...');
       try {
         await api.delete(`/admin/homepage/collections/${id}`);
         fetchHomepageCMSData();
-        modal.alert('Deleted', 'The collection card has been deleted.', 'success');
+        useFeedbackStore.getState().hideLoader();
+        useFeedbackStore.getState().showToast('✅ Collection deleted successfully', 'success');
       } catch (err) {
-        modal.alert('Action Failed', err.message, 'error');
+        useFeedbackStore.getState().hideLoader();
+        useFeedbackStore.getState().showToast(`❌ Failed to delete collection: ${err.message}`, 'error');
       }
     }
   };
@@ -1073,6 +1112,7 @@ export default function AdminDashboard() {
       sortOrder: parseInt(hpCatForm.sortOrder)
     };
 
+    useFeedbackStore.getState().showLoader('Saving cinematic category...');
     try {
       if (hpCatForm.id) {
         await api.put(`/admin/homepage/collections/${hpCatForm.id}`, payload);
@@ -1085,9 +1125,11 @@ export default function AdminDashboard() {
       setIsEditingHPCat(false);
       resetHPCatForm();
       fetchHomepageCMSData();
-      modal.alert('Promo Category Saved', 'Premium cinematic category updated successfully.', 'success');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast('✅ Changes published successfully', 'success');
     } catch (err) {
-      modal.alert('Action Failed', err.message, 'error');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast(`❌ Failed to save cinematic category: ${err.message}`, 'error');
     }
   };
 
@@ -1100,12 +1142,15 @@ export default function AdminDashboard() {
       'Cancel'
     );
     if (confirmed) {
+      useFeedbackStore.getState().showLoader('Deleting cinematic category...');
       try {
         await api.delete(`/admin/homepage/collections/${id}`);
         fetchHomepageCMSData();
-        modal.alert('Deleted', 'Cinematic category card has been removed.', 'success');
+        useFeedbackStore.getState().hideLoader();
+        useFeedbackStore.getState().showToast('✅ Cinematic category deleted successfully', 'success');
       } catch (err) {
-        modal.alert('Action Failed', err.message, 'error');
+        useFeedbackStore.getState().hideLoader();
+        useFeedbackStore.getState().showToast(`❌ Failed to delete cinematic category: ${err.message}`, 'error');
       }
     }
   };
@@ -1398,8 +1443,12 @@ export default function AdminDashboard() {
 
   const fetchProducts = async () => {
     try {
-      const response = await api.get('/products');
-      setProducts(response.products || []);
+      const response = await api.get('/admin/products');
+      const fetchedProducts = response.products || [];
+      setProducts(fetchedProducts);
+      console.log(`[Admin Product Logs] Total products in database: ${fetchedProducts.length}`);
+      console.log(`[Admin Product Logs] Total products returned by API: ${fetchedProducts.length}`);
+      console.log(`[Admin Product Logs] Total products rendered on screen: ${fetchedProducts.length}`);
     } catch (err) {
       console.error(err);
     }
@@ -1533,6 +1582,8 @@ export default function AdminDashboard() {
     }
     setProductFormErrors({});
 
+    const isUpdating = !!productForm.id;
+    useFeedbackStore.getState().showLoader(isUpdating ? 'Saving product...' : 'Saving product...');
     try {
       if (productForm.id) {
         await api.put(`/admin/products/${productForm.id}`, productForm);
@@ -1543,9 +1594,11 @@ export default function AdminDashboard() {
       resetProductForm();
       fetchProducts();
       fetchAnalytics();
-      modal.alert('Product Saved', 'The product has been saved to the storefront catalog successfully.', 'success');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast('✅ Product saved successfully', 'success');
     } catch (err) {
-      modal.alert('Action Failed', err.message, 'error');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast(`❌ Failed to save product: ${err.message}`, 'error');
     }
   };
 
@@ -1558,13 +1611,16 @@ export default function AdminDashboard() {
       'Cancel'
     );
     if (confirmed) {
+      useFeedbackStore.getState().showLoader('Deleting product...');
       try {
         await api.delete(`/admin/products/${id}`);
         fetchProducts();
         fetchAnalytics();
-        modal.alert('Deleted', 'Product has been deleted successfully.', 'success');
+        useFeedbackStore.getState().hideLoader();
+        useFeedbackStore.getState().showToast('✅ Product deleted successfully', 'success');
       } catch (err) {
-        modal.alert('Action Failed', err.message, 'error');
+        useFeedbackStore.getState().hideLoader();
+        useFeedbackStore.getState().showToast(`❌ Failed to delete product: ${err.message}`, 'error');
       }
     }
   };
@@ -1606,6 +1662,8 @@ export default function AdminDashboard() {
     }
     setCategoryFormErrors({});
 
+    const isUpdating = !!categoryForm.id;
+    useFeedbackStore.getState().showLoader(isUpdating ? 'Saving category...' : 'Saving category...');
     try {
       if (categoryForm.id) {
         await api.put(`/admin/categories/${categoryForm.id}`, categoryForm);
@@ -1619,13 +1677,16 @@ export default function AdminDashboard() {
       if (selectedCategoryId) {
         fetchCategoryDetails(selectedCategoryId);
       }
-      modal.alert('Category Saved', 'The category has been saved successfully.', 'success');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast(isUpdating ? '✅ Category saved successfully' : '✅ Category created successfully', 'success');
     } catch (err) {
-      modal.alert('Action Failed', err.message, 'error');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast(`❌ Failed to save category: ${err.message}`, 'error');
     }
   };
 
   const handleAssignProducts = async () => {
+    useFeedbackStore.getState().showLoader('Assigning products...');
     try {
       await api.post(`/admin/categories/${selectedCategoryId}/assign`, {
         productIds: selectedProductIdsToAssign
@@ -1635,9 +1696,11 @@ export default function AdminDashboard() {
       fetchCategoryDetails(selectedCategoryId);
       fetchCategories();
       fetchAnalytics();
-      modal.alert('Products Assigned', 'Products have been successfully assigned to this category.', 'success');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast('✅ Products assigned successfully', 'success');
     } catch (err) {
-      modal.alert('Action Failed', err.message, 'error');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast(`❌ Action Failed: ${err.message}`, 'error');
     }
   };
 
@@ -1652,14 +1715,17 @@ export default function AdminDashboard() {
     if (!confirmed) {
       return;
     }
+    useFeedbackStore.getState().showLoader('Removing product from category...');
     try {
       await api.post(`/admin/categories/${selectedCategoryId}/remove`, { productId });
       fetchCategoryDetails(selectedCategoryId);
       fetchCategories();
       fetchAnalytics();
-      modal.alert('Product Removed', 'Product has been reassigned to the Uncategorized fallback.', 'success');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast('✅ Product removed from category', 'success');
     } catch (err) {
-      modal.alert('Action Failed', err.message, 'error');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast(`❌ Action Failed: ${err.message}`, 'error');
     }
   };
 
@@ -1674,14 +1740,17 @@ export default function AdminDashboard() {
     if (!confirmed) {
       return;
     }
+    useFeedbackStore.getState().showLoader('Deleting category...');
     try {
       await api.delete(`/admin/categories/${id}`);
       setSelectedCategoryId(null);
       fetchCategories();
       fetchAnalytics();
-      modal.alert('Deleted', 'The category has been deleted successfully.', 'success');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast('✅ Category deleted successfully', 'success');
     } catch (err) {
-      modal.alert('Action Failed', err.message, 'error');
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast(`❌ Failed to delete category: ${err.message}`, 'error');
     }
   };
 
@@ -2541,7 +2610,7 @@ export default function AdminDashboard() {
   if (!isAdminAuthenticated) return null;
 
   return (
-    <div className="min-h-screen bg-[#F7F4ED] text-[#37411A] flex flex-col lg:flex-row relative font-sans selection:bg-[#B8833E] selection:text-[#F7F4ED]">
+    <div className="min-h-screen bg-[#F7F4ED] text-[#37411A] flex flex-col lg:flex-row relative font-sans selection:bg-[#B8833E] selection:text-[#F7F4ED] admin-dashboard-container">
       
       {/* Dynamic scrollbars style */}
       <style dangerouslySetInnerHTML={{__html: `
@@ -2561,7 +2630,7 @@ export default function AdminDashboard() {
             <img 
               src="https://i.ibb.co/Pz01P9Y5/Whats-App-Image-2026-05-29-at-6-51-48-PM-removebg-preview.png" 
               alt="Suryodaya Farms Logo" 
-              className="w-10 h-10 object-contain"
+              className="w-14 h-14 object-contain"
             />
             <div className="flex flex-col text-left">
               <span className="font-serif text-sm font-bold tracking-widest text-[#37411A] uppercase leading-none">
@@ -2818,7 +2887,7 @@ export default function AdminDashboard() {
       </aside>
 
       {/* 2. DYNAMIC WORKSPACE PANEL */}
-      <main className="flex-grow bg-[#F7F4ED] p-6 lg:p-10 z-10 flex flex-col justify-start overflow-x-hidden text-left">
+      <main className="flex-grow bg-[#F7F4ED] p-5 md:p-8 z-10 flex flex-col justify-start overflow-x-hidden text-left">
         
         {/* TAB 1: OVERVIEW */}
         {activeTab === 'overview' && (() => {
@@ -3576,14 +3645,14 @@ export default function AdminDashboard() {
                 )}
 
                 {productModalTab === 'general' ? (
-                  <form noValidate onSubmit={handleSaveProduct} className="space-y-8 text-xs text-stone-600 max-h-[70vh] overflow-y-auto custom-scroll pr-2">
+                  <form noValidate onSubmit={handleSaveProduct} className="space-y-6 text-xs text-stone-600 max-h-[70vh] overflow-y-auto custom-scroll pr-2">
                   
                   {/* SECTION 1: BASIC INFO */}
-                  <div className="space-y-4">
-                    <h4 className="font-serif text-sm font-bold text-[#4E641A] border-b border-[#EDE7D9] pb-2">1. Basic Info</h4>
-                    <div className="grid grid-cols-1 gap-4">
+                  <div className="bg-white border border-stone-200 rounded-xl p-5 md:p-6 shadow-xs space-y-5 text-left">
+                    <h4 className="text-sm font-semibold text-stone-900 border-b border-stone-100 pb-2">1. Basic Info</h4>
+                    <div className="grid grid-cols-1 gap-5">
                       <div className="flex flex-col gap-1 text-left">
-                        <label className="text-[9px] font-extrabold uppercase tracking-wider text-stone-400">Product Name *</label>
+                        <label className="text-xs font-semibold text-stone-700 tracking-wide mb-1">Product Name *</label>
                         <input 
                           type="text" 
                           placeholder="e.g. A2 Bilona Churned Ghee" 
@@ -3593,7 +3662,7 @@ export default function AdminDashboard() {
                             const newSku = newName.toUpperCase().replace(/\s+/g, '-').replace(/[^A-Z0-9-]/g, '') + '-' + Math.floor(100 + Math.random() * 900);
                             setProductForm({ ...productForm, name: newName, sku: productForm.id ? productForm.sku : newSku });
                           }}
-                          className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] text-[#37411A]"
+                          className="bg-white border border-stone-300 rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 placeholder-stone-400 text-sm transition-all"
                           required
                         />
                         {productFormErrors.name && (
@@ -3603,12 +3672,12 @@ export default function AdminDashboard() {
                         )}
                       </div>
                       <div className="flex flex-col gap-1.5 text-left">
-                        <label className="text-[9px] font-extrabold uppercase tracking-wider text-stone-400">Categories (Select one or multiple) *</label>
-                        <div className="grid grid-cols-2 gap-3 bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl p-4 max-h-40 overflow-y-auto">
+                        <label className="text-xs font-semibold text-stone-700 tracking-wide mb-1">Categories (Select one or multiple) *</label>
+                        <div className="grid grid-cols-2 gap-3 bg-stone-50 border border-stone-200 rounded-xl p-4 max-h-40 overflow-y-auto">
                           {categories.map(cat => {
                             const isChecked = (productForm.categoryIds || []).includes(cat.id);
                             return (
-                              <label key={cat.id} className="flex items-center gap-2 font-sans text-xs text-[#37411A] cursor-pointer">
+                              <label key={cat.id} className="flex items-center gap-2 font-sans text-xs text-stone-700 cursor-pointer hover:text-[#4E641A] transition">
                                 <input
                                   type="checkbox"
                                   checked={isChecked}
@@ -3640,39 +3709,53 @@ export default function AdminDashboard() {
                         )}
                       </div>
                       <div className="flex flex-col gap-1 text-left">
-                        <label className="text-[9px] font-extrabold uppercase tracking-wider text-stone-400">Short Description</label>
+                        <label className="text-xs font-semibold text-stone-700 tracking-wide mb-1">Short Description</label>
                         <textarea 
                           placeholder="A brief punchy summary of the staple's unique features..." 
                           value={productForm.shortDescription}
                           onChange={(e) => setProductForm({ ...productForm, shortDescription: e.target.value })}
-                          className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] h-20 resize-none font-sans text-[#37411A]"
+                          className="bg-white border border-stone-300 rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 h-24 resize-none font-sans text-stone-900 placeholder-stone-400 text-sm transition-all"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* SECTION 2: PRICING & INVENTORY */}
-                  <div className="space-y-4">
-                    <h4 className="font-serif text-sm font-bold text-[#4E641A] border-b border-[#EDE7D9] pb-2">2. Pricing & Inventory</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-white border border-stone-200 rounded-xl p-5 md:p-6 shadow-xs space-y-5 text-left">
+                    <h4 className="text-sm font-semibold text-stone-900 border-b border-stone-100 pb-2">2. Pricing & Inventory</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <div className="flex flex-col gap-1 text-left">
-                        <label className="text-[9px] font-extrabold uppercase tracking-wider text-stone-400">Original Price (₹)</label>
+                        <label className="text-xs font-semibold text-stone-700 tracking-wide mb-1">Original Price (₹)</label>
                         <input 
                           type="number" 
                           placeholder="1100" 
                           value={productForm.compareAtPrice}
-                          onChange={(e) => setProductForm({ ...productForm, compareAtPrice: e.target.value })}
-                          className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] text-[#37411A]"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setProductForm(prev => ({
+                              ...prev,
+                              compareAtPrice: val,
+                              discountPercent: calculateDiscount(val, prev.price)
+                            }));
+                          }}
+                          className="bg-white border border-stone-300 rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 placeholder-stone-400 text-sm transition-all"
                         />
                       </div>
                       <div className="flex flex-col gap-1 text-left">
-                        <label className="text-[9px] font-extrabold uppercase tracking-wider text-stone-400">Sale Price (₹) *</label>
+                        <label className="text-xs font-semibold text-stone-700 tracking-wide mb-1">Sale Price (₹) *</label>
                         <input 
                           type="number" 
                           placeholder="950" 
                           value={productForm.price}
-                          onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                          className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] text-[#37411A]"
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setProductForm(prev => ({
+                              ...prev,
+                              price: val,
+                              discountPercent: calculateDiscount(prev.compareAtPrice, val)
+                            }));
+                          }}
+                          className="bg-white border border-stone-300 rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 placeholder-stone-400 text-sm transition-all"
                           required
                         />
                         {productFormErrors.price && (
@@ -3682,13 +3765,13 @@ export default function AdminDashboard() {
                         )}
                       </div>
                       <div className="flex flex-col gap-1 text-left">
-                        <label className="text-[9px] font-extrabold uppercase tracking-wider text-stone-400">Stock Quantity *</label>
+                        <label className="text-xs font-semibold text-stone-700 tracking-wide mb-1">Stock Quantity *</label>
                         <input 
                           type="number" 
                           placeholder="40" 
                           value={productForm.inventory}
                           onChange={(e) => setProductForm({ ...productForm, inventory: e.target.value })}
-                          className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] text-[#37411A]"
+                          className="bg-white border border-stone-300 rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 placeholder-stone-400 text-sm transition-all"
                           required
                         />
                         {productFormErrors.inventory && (
@@ -3698,43 +3781,43 @@ export default function AdminDashboard() {
                         )}
                       </div>
                       <div className="flex flex-col gap-1 text-left">
-                        <label className="text-[9px] font-extrabold uppercase tracking-wider text-stone-400">Stock Status</label>
+                        <label className="text-xs font-semibold text-stone-700 tracking-wide mb-1">Stock Status</label>
                         <select
                           value={productForm.stockStatus}
                           onChange={(e) => setProductForm({ ...productForm, stockStatus: e.target.value })}
-                          className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] text-[#37411A] cursor-pointer"
+                          className="bg-white border border-stone-300 rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 cursor-pointer text-sm transition-all"
                         >
                           <option value="IN_STOCK">IN STOCK</option>
                           <option value="OUT_OF_STOCK">OUT OF STOCK</option>
                         </select>
                       </div>
                       <div className="flex flex-col gap-1 text-left">
-                        <label className="text-[9px] font-extrabold uppercase tracking-wider text-stone-400">Weight / Size</label>
+                        <label className="text-xs font-semibold text-stone-700 tracking-wide mb-1">Weight / Size</label>
                         <input 
                           type="text" 
                           placeholder="e.g. 500 g / 1 Litre" 
                           value={productForm.weight}
                           onChange={(e) => setProductForm({ ...productForm, weight: e.target.value })}
-                          className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] text-[#37411A]"
+                          className="bg-white border border-stone-300 rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 placeholder-stone-400 text-sm transition-all"
                         />
                       </div>
                       <div className="flex flex-col gap-1 text-left">
-                        <label className="text-[9px] font-extrabold uppercase tracking-wider text-stone-400">Discount Badge (%)</label>
+                        <label className="text-xs font-semibold text-stone-700 tracking-wide mb-1">Discount Badge (%)</label>
                         <input 
                           type="number" 
                           placeholder="15" 
                           value={productForm.discountPercent}
                           onChange={(e) => setProductForm({ ...productForm, discountPercent: e.target.value })}
-                          className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] text-[#37411A]"
+                          className="bg-white border border-stone-300 rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 placeholder-stone-400 text-sm transition-all"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* SECTION 2.5: PRODUCT VARIANTS */}
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center border-b border-[#EDE7D9] pb-2">
-                      <h4 className="font-serif text-sm font-bold text-[#4E641A]">2.5 Product Variants</h4>
+                  <div className="bg-white border border-stone-200 rounded-xl p-5 md:p-6 shadow-xs space-y-5 text-left">
+                    <div className="flex justify-between items-center border-b border-stone-100 pb-2">
+                      <h4 className="text-sm font-semibold text-stone-900">2.5 Product Variants</h4>
                       <button
                         type="button"
                         onClick={() => {
@@ -3760,7 +3843,7 @@ export default function AdminDashboard() {
                             ]
                           });
                         }}
-                        className="px-3 py-1.5 bg-[#4E641A] hover:bg-[#37411A] text-white text-[10px] font-bold uppercase tracking-wider rounded-lg transition border-none cursor-pointer flex items-center gap-1 shadow-sm"
+                        className="px-3.5 py-2 bg-[#4E641A] hover:bg-[#37411A] text-white text-[10px] font-bold uppercase tracking-wider rounded-lg transition border-none cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
                       >
                         <FiPlus className="w-3 h-3 text-[#B8833E]" />
                         <span>Add Variant</span>
@@ -3768,11 +3851,11 @@ export default function AdminDashboard() {
                     </div>
 
                     {(productForm.variants && productForm.variants.length > 0) ? (
-                      <div className="space-y-3 bg-[#FDFBF7] border border-[#EDE7D9] p-4 rounded-2xl">
+                      <div className="space-y-4 bg-stone-50 border border-stone-200 p-4 rounded-xl">
                         {productForm.variants.map((variant, index) => (
-                          <div key={index} className="grid grid-cols-2 sm:grid-cols-5 gap-3 p-3 bg-white border border-[#EDE7D9] rounded-xl relative">
+                          <div key={index} className="grid grid-cols-2 sm:grid-cols-5 gap-3 p-4 bg-white border border-stone-200 rounded-xl relative hover:border-stone-300 transition-colors shadow-xxs">
                             <div className="flex flex-col gap-1 text-left">
-                              <label className="text-[8px] font-extrabold uppercase tracking-wider text-stone-400">Size *</label>
+                              <label className="text-[10px] font-semibold text-stone-700 tracking-wide">Size *</label>
                               <input
                                 type="text"
                                 value={variant.name}
@@ -3782,12 +3865,12 @@ export default function AdminDashboard() {
                                   setProductForm({ ...productForm, variants: updated });
                                 }}
                                 placeholder="e.g. 500g"
-                                className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-lg py-1.5 px-2 focus:outline-none focus:border-[#4E641A] text-[#37411A]"
+                                className="bg-white border border-stone-300 rounded-lg py-2 px-2.5 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 text-xs transition-all w-full"
                                 required
                               />
                             </div>
                             <div className="flex flex-col gap-1 text-left">
-                              <label className="text-[8px] font-extrabold uppercase tracking-wider text-stone-400">Price (₹) *</label>
+                              <label className="text-[10px] font-semibold text-stone-700 tracking-wide">Price (₹) *</label>
                               <input
                                 type="number"
                                 value={variant.price}
@@ -3797,12 +3880,12 @@ export default function AdminDashboard() {
                                   setProductForm({ ...productForm, variants: updated });
                                 }}
                                 placeholder="Price"
-                                className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-lg py-1.5 px-2 focus:outline-none focus:border-[#4E641A] text-[#37411A]"
+                                className="bg-white border border-stone-300 rounded-lg py-2 px-2.5 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 text-xs transition-all w-full"
                                 required
                               />
                             </div>
                             <div className="flex flex-col gap-1 text-left">
-                              <label className="text-[8px] font-extrabold uppercase tracking-wider text-stone-400">MRP (₹)</label>
+                              <label className="text-[10px] font-semibold text-stone-700 tracking-wide">MRP (₹)</label>
                               <input
                                 type="number"
                                 value={variant.mrp}
@@ -3812,11 +3895,11 @@ export default function AdminDashboard() {
                                   setProductForm({ ...productForm, variants: updated });
                                 }}
                                 placeholder="MRP"
-                                className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-lg py-1.5 px-2 focus:outline-none focus:border-[#4E641A] text-[#37411A]"
+                                className="bg-white border border-stone-300 rounded-lg py-2 px-2.5 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 text-xs transition-all w-full"
                               />
                             </div>
                             <div className="flex flex-col gap-1 text-left">
-                              <label className="text-[8px] font-extrabold uppercase tracking-wider text-stone-400">Stock Qty *</label>
+                              <label className="text-[10px] font-semibold text-stone-700 tracking-wide">Stock Qty *</label>
                               <input
                                 type="number"
                                 value={variant.inventory}
@@ -3826,12 +3909,12 @@ export default function AdminDashboard() {
                                   setProductForm({ ...productForm, variants: updated });
                                 }}
                                 placeholder="Stock"
-                                className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-lg py-1.5 px-2 focus:outline-none focus:border-[#4E641A] text-[#37411A]"
+                                className="bg-white border border-stone-300 rounded-lg py-2 px-2.5 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 text-xs transition-all w-full"
                                 required
                               />
                             </div>
                             <div className="flex flex-col gap-1 text-left pr-6">
-                              <label className="text-[8px] font-extrabold uppercase tracking-wider text-stone-400">SKU</label>
+                              <label className="text-[10px] font-semibold text-stone-700 tracking-wide">SKU</label>
                               <input
                                 type="text"
                                 value={variant.sku}
@@ -3841,7 +3924,7 @@ export default function AdminDashboard() {
                                   setProductForm({ ...productForm, variants: updated });
                                 }}
                                 placeholder="SKU"
-                                className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-lg py-1.5 px-2 focus:outline-none focus:border-[#4E641A] text-[#37411A] w-full"
+                                className="bg-white border border-stone-300 rounded-lg py-2 px-2.5 focus:outline-none focus:border-[#4E641A] focus:ring-4 focus:ring-[#4E641A]/10 text-stone-900 text-xs transition-all w-full"
                               />
                             </div>
                             <button
@@ -3850,7 +3933,7 @@ export default function AdminDashboard() {
                                 const updated = (productForm.variants || []).filter((_, i) => i !== index);
                                 setProductForm({ ...productForm, variants: updated });
                               }}
-                              className="absolute top-2 right-2 text-red-500 hover:text-red-700 bg-transparent border-none cursor-pointer"
+                              className="absolute top-2.5 right-2.5 text-stone-400 hover:text-red-500 bg-transparent border-none cursor-pointer transition-colors"
                               title="Delete Variant"
                             >
                               ✕
@@ -3859,13 +3942,13 @@ export default function AdminDashboard() {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-[10px] text-stone-400 italic text-left">No variants added yet. Parent product details will be used by default if no variants are specified.</p>
+                      <p className="text-xs text-stone-400 italic text-left bg-stone-50 border border-stone-200 p-4 rounded-xl">No variants added yet. Parent product details will be used by default if no variants are specified.</p>
                     )}
                   </div>
 
                   {/* SECTION 3: MEDIA UPLOAD */}
-                  <div className="space-y-4">
-                    <h4 className="font-serif text-sm font-bold text-[#4E641A] border-b border-[#EDE7D9] pb-2">3. Media Assets</h4>
+                  <div className="bg-white border border-stone-200 rounded-xl p-5 md:p-6 shadow-xs space-y-5 text-left">
+                    <h4 className="text-sm font-semibold text-stone-900 border-b border-stone-100 pb-2">3. Media Assets</h4>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <UnifiedUploader
@@ -3887,43 +3970,43 @@ export default function AdminDashboard() {
                   </div>
 
                   {/* SECTION 4: STOREFRONT */}
-                  <div className="space-y-4">
-                    <h4 className="font-serif text-sm font-bold text-[#4E641A] border-b border-[#EDE7D9] pb-2">4. Storefront Flags</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-[#FDFBF7] border border-[#EDE7D9] p-5 rounded-2xl">
+                  <div className="bg-white border border-stone-200 rounded-xl p-5 md:p-6 shadow-xs space-y-5 text-left">
+                    <h4 className="text-sm font-semibold text-stone-900 border-b border-stone-100 pb-2">4. Storefront Flags</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-stone-50 border border-stone-200 p-5 rounded-xl">
                       
-                      <label className="flex items-center space-x-3 cursor-pointer select-none">
+                      <label className="flex items-center space-x-3 cursor-pointer select-none hover:opacity-85 transition">
                         <input 
                           type="checkbox"
                           checked={productForm.isFeatured}
                           onChange={(e) => setProductForm({ ...productForm, isFeatured: e.target.checked })}
-                          className="w-5 h-5 rounded border-[#EDE7D9] text-[#4E641A] focus:ring-[#4E641A] cursor-pointer"
+                          className="w-5 h-5 rounded border-stone-300 text-[#4E641A] focus:ring-[#4E641A] cursor-pointer accent-[#4E641A]"
                         />
                         <div className="flex flex-col text-left">
-                          <span className="font-bold text-xs text-[#37411A]">Featured</span>
+                          <span className="font-semibold text-xs text-stone-800">Featured</span>
                         </div>
                       </label>
 
-                      <label className="flex items-center space-x-3 cursor-pointer select-none">
+                      <label className="flex items-center space-x-3 cursor-pointer select-none hover:opacity-85 transition">
                         <input 
                           type="checkbox"
                           checked={productForm.isBestseller}
                           onChange={(e) => setProductForm({ ...productForm, isBestseller: e.target.checked })}
-                          className="w-5 h-5 rounded border-[#EDE7D9] text-[#4E641A] focus:ring-[#4E641A] cursor-pointer"
+                          className="w-5 h-5 rounded border-stone-300 text-[#4E641A] focus:ring-[#4E641A] cursor-pointer accent-[#4E641A]"
                         />
                         <div className="flex flex-col text-left">
-                          <span className="font-bold text-xs text-[#37411A]">Bestseller</span>
+                          <span className="font-semibold text-xs text-stone-800">Bestseller</span>
                         </div>
                       </label>
 
-                      <label className="flex items-center space-x-3 cursor-pointer select-none">
+                      <label className="flex items-center space-x-3 cursor-pointer select-none hover:opacity-85 transition">
                         <input 
                           type="checkbox"
                           checked={productForm.isNewLaunch}
                           onChange={(e) => setProductForm({ ...productForm, isNewLaunch: e.target.checked })}
-                          className="w-5 h-5 rounded border-[#EDE7D9] text-[#4E641A] focus:ring-[#4E641A] cursor-pointer"
+                          className="w-5 h-5 rounded border-stone-300 text-[#4E641A] focus:ring-[#4E641A] cursor-pointer accent-[#4E641A]"
                         />
                         <div className="flex flex-col text-left">
-                          <span className="font-bold text-xs text-[#37411A]">New Arrival</span>
+                          <span className="font-semibold text-xs text-stone-800">New Arrival</span>
                         </div>
                       </label>
 
@@ -3931,21 +4014,24 @@ export default function AdminDashboard() {
                   </div>
 
                   {/* Actions buttons */}
-                  <div className="border-t border-[#EDE7D9] pt-6 flex flex-col sm:flex-row justify-between items-center gap-4 sticky bottom-0 bg-white pb-4">
+                  <div className="border-t border-stone-200 pt-6 flex flex-col sm:flex-row justify-between items-center gap-4 sticky bottom-0 bg-white pb-4">
                     <span className="text-[10px] text-stone-400 font-semibold italic">Draft autosaves locally</span>
                     <div className="flex gap-3 w-full sm:w-auto">
                       <button
                         type="button"
                         onClick={() => { setShowProductModal(false); resetProductForm(); }}
-                        className="w-full sm:w-auto px-6 py-3.5 rounded-xl border border-stone-200 text-stone-500 hover:bg-stone-50 hover:text-stone-700 uppercase font-bold tracking-wider cursor-pointer transition"
+                        className="w-full sm:w-auto px-6 py-3.5 rounded-xl border border-stone-300 text-stone-600 hover:bg-stone-50 hover:text-stone-800 uppercase font-bold tracking-wider cursor-pointer transition active:scale-95"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="w-full sm:w-auto px-8 py-3.5 bg-[#4E641A] hover:bg-[#37411A] text-white rounded-xl uppercase font-extrabold tracking-widest cursor-pointer border-none shadow-md transition transform active:scale-95"
+                        disabled={isGlobalLoading}
+                        className="w-full sm:w-auto px-8 py-3.5 bg-[#4E641A] hover:bg-[#37411A] disabled:bg-stone-300 text-white rounded-xl uppercase font-extrabold tracking-widest cursor-pointer border-none shadow-md transition transform active:scale-95"
                       >
-                        {productForm.id ? 'Save Updates' : 'Quick Publish ⚡'}
+                        {isGlobalLoading 
+                          ? (productForm.id ? 'Saving...' : 'Publishing...') 
+                          : (productForm.id ? 'Save Product' : 'Quick Publish ⚡')}
                       </button>
                     </div>
                   </div>
@@ -4071,7 +4157,7 @@ export default function AdminDashboard() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full text-left">
                 {products.map((prod) => (
-                  <div key={prod.id} className="bg-white border border-[#EDE7D9] rounded-2xl p-5 flex items-center justify-between gap-4 shadow-sm hover:border-[#B8833E]/20 transition group text-left">
+                  <div key={prod.id} className="bg-white border border-[#EDE7D9] rounded-2xl p-5 flex items-center justify-between gap-4 shadow-sm hover:border-[#B8833E]/20 transition group text-left admin-product-card">
                     <div className="flex gap-4 items-center min-w-0">
                       <img 
                         src={prod.images?.length > 0 ? prod.images[0].url : prod.image} 
@@ -4079,7 +4165,7 @@ export default function AdminDashboard() {
                         className="w-14 h-14 object-cover rounded-xl border border-[#EDE7D9] bg-stone-50 shrink-0"
                       />
                       <div className="flex flex-col text-left min-w-0">
-                        <h4 className="font-serif text-sm font-bold truncate text-[#37411A] group-hover:text-[#B8833E] transition">{prod.name}</h4>
+                        <h4 className="font-serif text-sm font-bold truncate text-[#37411A] group-hover:text-[#B8833E] transition admin-product-name">{prod.name}</h4>
                         <p className="text-[10px] text-stone-400 font-semibold mt-0.5">
                           SKU: {prod.sku} • Stock: <span className={prod.inventory > 0 ? 'text-[#4E641A] font-bold' : 'text-red-500 font-bold'}>{prod.inventory} units</span>
                         </p>
@@ -4087,7 +4173,7 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="flex items-center gap-4 shrink-0">
-                      <strong className="text-[#4E641A] font-serif text-sm font-bold">₹{prod.price}</strong>
+                      <strong className="text-[#4E641A] font-serif text-sm font-bold admin-product-price">₹{prod.price}</strong>
                       <div className="flex space-x-1">
                         <button
                           onClick={() => openEditProduct(prod)}
@@ -5059,9 +5145,10 @@ export default function AdminDashboard() {
                     </button>
                     <button
                       type="submit"
-                      className="px-6 py-3 bg-[#4E641A] hover:bg-[#37411A] text-white rounded-xl uppercase font-bold tracking-wider cursor-pointer border-none"
+                      disabled={isGlobalLoading}
+                      className="px-6 py-3 bg-[#4E641A] hover:bg-[#37411A] disabled:bg-stone-300 text-white rounded-xl uppercase font-bold tracking-wider cursor-pointer border-none"
                     >
-                      Save Category
+                      {isGlobalLoading ? 'Saving...' : 'Save Category'}
                     </button>
                   </div>
 
@@ -5348,7 +5435,7 @@ export default function AdminDashboard() {
             {/* "+ Assign Products" drawer/modal */}
             {showAssignModal && (
               <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-white border border-[#EDE7D9] rounded-[28px] max-w-2xl w-full p-6 shadow-2xl animate-scale-up space-y-5 flex flex-col max-h-[85vh]">
+                <div className="bg-white border border-[#EDE7D9] rounded-[28px] max-w-4xl w-full p-6 shadow-2xl animate-scale-up space-y-5 flex flex-col max-h-[85vh]">
                   
                   <div className="flex justify-between items-center border-b border-stone-100 pb-3">
                     <div className="text-left">
@@ -5536,7 +5623,7 @@ export default function AdminDashboard() {
               <h1 className="font-serif text-2xl md:text-3xl font-bold text-[#37411A]">Campaigns & Settings</h1>
             </div>
 
-            <div className="max-w-2xl mx-auto w-full">
+            <div className="max-w-4xl mx-auto w-full">
               
               {/* Admin Profile settings card */}
               <div className="bg-white border border-[#EDE7D9] rounded-[28px] p-6 mb-6 space-y-5 shadow-sm">
@@ -5578,8 +5665,12 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="flex justify-end pt-4 border-t">
-                    <button type="submit" className="px-5 py-3 bg-[#4E641A] text-white font-sans text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-[#2F3B0C] transition cursor-pointer shadow-sm border-none">
-                      Save Profile
+                    <button
+                      type="submit"
+                      disabled={isGlobalLoading}
+                      className="px-5 py-3 bg-[#4E641A] hover:bg-[#2F3B0C] disabled:bg-stone-300 text-white font-sans text-xs font-bold uppercase tracking-widest rounded-xl transition cursor-pointer shadow-sm border-none"
+                    >
+                      {isGlobalLoading ? 'Saving...' : 'Save Profile'}
                     </button>
                   </div>
                 </form>
@@ -5785,7 +5876,7 @@ export default function AdminDashboard() {
 
             {/* Modal for Create/Edit */}
             {showCouponModal && (
-              <div className="bg-white border border-[#EDE7D9] rounded-[28px] p-6 shadow-md animate-scale-up max-w-2xl mx-auto">
+              <div className="bg-white border border-[#EDE7D9] rounded-[28px] p-6 shadow-md animate-scale-up max-w-4xl mx-auto">
                 <h3 className="font-serif text-lg font-bold text-[#B8833E] mb-5">
                   {couponForm.id ? 'Modify Voucher Details' : 'Create New Voucher Campaign'}
                 </h3>
@@ -6454,7 +6545,7 @@ export default function AdminDashboard() {
 
             {/* Create/Edit Testimonial Modal */}
             {showTestimonialModal && (
-              <div className="bg-white border border-[#EDE7D9] rounded-[28px] p-6 shadow-md animate-scale-up max-w-2xl mx-auto space-y-5">
+              <div className="bg-white border border-[#EDE7D9] rounded-[28px] p-6 shadow-md animate-scale-up max-w-4xl mx-auto space-y-5">
                 <h3 className="font-serif text-lg font-bold text-[#B8833E]">
                   {testimonialForm.id ? 'Modify Testimonial' : 'Add New Testimonial'}
                 </h3>
@@ -7173,9 +7264,10 @@ export default function AdminDashboard() {
                             </button>
                             <button
                               type="submit"
-                              className="px-6 py-3 bg-[#4E641A] hover:bg-[#37411A] text-white rounded-xl uppercase font-bold tracking-wider cursor-pointer border-none"
+                              disabled={isGlobalLoading}
+                              className="px-6 py-3 bg-[#4E641A] hover:bg-[#37411A] disabled:bg-stone-300 text-white rounded-xl uppercase font-bold tracking-wider cursor-pointer border-none"
                             >
-                              Save Layout
+                              {isGlobalLoading ? 'Saving...' : 'Save Layout'}
                             </button>
                           </div>
                         </form>
@@ -7517,9 +7609,10 @@ export default function AdminDashboard() {
                             </button>
                             <button
                               type="submit"
-                              className="px-6 py-3 bg-[#4E641A] hover:bg-[#37411A] text-white rounded-xl uppercase font-bold tracking-wider cursor-pointer border-none"
+                              disabled={isGlobalLoading}
+                              className="px-6 py-3 bg-[#4E641A] hover:bg-[#37411A] disabled:bg-stone-300 text-white rounded-xl uppercase font-bold tracking-wider cursor-pointer border-none"
                             >
-                              Save Collection
+                              {isGlobalLoading ? 'Saving...' : 'Save Collection'}
                             </button>
                           </div>
                         </form>
@@ -7963,9 +8056,10 @@ export default function AdminDashboard() {
                             </button>
                             <button
                               type="submit"
-                              className="px-6 py-3 bg-[#4E641A] hover:bg-[#37411A] text-white rounded-xl uppercase font-bold tracking-wider cursor-pointer border-none text-[10px]"
+                              disabled={isGlobalLoading}
+                              className="px-6 py-3 bg-[#4E641A] hover:bg-[#37411A] disabled:bg-stone-300 text-white rounded-xl uppercase font-bold tracking-wider cursor-pointer border-none text-[10px]"
                             >
-                              Save Cinematic Category
+                              {isGlobalLoading ? 'Saving...' : 'Save Cinematic Category'}
                             </button>
                           </div>
                         </form>

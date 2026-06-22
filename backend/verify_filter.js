@@ -1,6 +1,6 @@
 async function test() {
   try {
-    const res = await fetch('http://localhost:5000/api/public/homepage');
+    const res = await fetch('https://suryodayafarms.onrender.com/api/public/homepage');
     const data = await res.json();
     const homepageCollections = data.collections || [];
     

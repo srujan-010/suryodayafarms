@@ -30,6 +30,7 @@ import { AuthProvider } from './components/auth/AuthProvider';
 import { LoginModal } from './components/auth/LoginModal';
 import { LoginRequiredModal } from './components/auth/LoginRequiredModal';
 import CustomModal from './components/CustomModal';
+import GlobalFeedback from './components/GlobalFeedback';
 
 export default function App() {
   // Global Store Bindings
@@ -90,6 +91,7 @@ export default function App() {
       <LoginModal />
       <LoginRequiredModal />
       <CustomModal />
+      <GlobalFeedback />
     </AuthProvider>
   );
 }

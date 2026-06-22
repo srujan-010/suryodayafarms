@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import api from '../utils/api';
+import { useFeedbackStore } from './useFeedbackStore';
 
 export const useAdminAuthStore = create((set, get) => ({
   adminUser: null,
@@ -13,8 +14,10 @@ export const useAdminAuthStore = create((set, get) => ({
   // 1. ADMIN LOGIN ACTIONS
   adminLogin: async (email, password) => {
     set({ isAdminLoading: true, adminError: null });
+    useFeedbackStore.getState().showLoader('Authenticating administrator...');
     try {
       const response = await api.post('/auth/login', { email, password });
+      useFeedbackStore.getState().hideLoader();
       
       if (response.success && response.user) {
         // Enforce administrative role protection on login
@@ -25,6 +28,7 @@ export const useAdminAuthStore = create((set, get) => ({
             isAdminLoading: false,
             adminError: 'Access denied. Administrative credentials required.'
           });
+          useFeedbackStore.getState().showToast('❌ Access denied. Administrative privileges required.', 'error');
           return { success: false, message: 'Access denied. Administrative credentials required.' };
         }
 
@@ -41,12 +45,16 @@ export const useAdminAuthStore = create((set, get) => ({
           adminError: null
         });
 
+        useFeedbackStore.getState().showToast('✅ Admin authenticated successfully', 'success');
         return { success: true, message: 'Admin authenticated successfully.' };
       }
 
+      useFeedbackStore.getState().showToast(`❌ Authentication failed: ${response.message || 'Error'}`, 'error');
       return { success: false, message: response.message || 'Authentication failed.' };
     } catch (error) {
+      useFeedbackStore.getState().hideLoader();
       set({ adminError: error.message, isAdminLoading: false });
+      useFeedbackStore.getState().showToast(`❌ Authentication failed: ${error.message}`, 'error');
       return { success: false, message: error.message || 'An error occurred.' };
     }
   },
@@ -101,6 +109,7 @@ export const useAdminAuthStore = create((set, get) => ({
   // 3. ADMIN LOGOUT
   adminLogout: async () => {
     set({ isAdminLoading: true, adminError: null });
+    useFeedbackStore.getState().showLoader('Logging out of Admin console...');
     try {
       // Optionally notify backend, but local token destruction is primary
       localStorage.removeItem('adminToken');
@@ -111,6 +120,8 @@ export const useAdminAuthStore = create((set, get) => ({
         isAdminAuthChecked: true,
         adminError: null
       });
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast('✅ Logged out successfully', 'success');
     } catch (error) {
       localStorage.removeItem('adminToken');
       set({
@@ -119,6 +130,8 @@ export const useAdminAuthStore = create((set, get) => ({
         isAdminLoading: false,
         isAdminAuthChecked: true
       });
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast('✅ Logged out successfully', 'success');
     }
   }
 }));

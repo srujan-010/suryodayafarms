@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { FiStar, FiHeart, FiSearch } from 'react-icons/fi';
 import { useCartStore } from '../store/useCartStore';
 import { useWishlistStore } from '../store/useWishlistStore';
 import { useAuthStore } from '../store/useAuthStore';
+import { getOptimizedImageUrl } from '../utils/imageOptimizer';
 
 const getCategoryEmoji = (name) => {
   const norm = (name || '').toLowerCase();
@@ -55,7 +56,7 @@ const getDynamicBadge = (prod) => {
 
 export default function ProductCard({ product, onQuickView }) {
   const navigate = useNavigate();
-  const { addItem } = useCartStore();
+  const { addItem, cartItems, updateQuantity, removeItem } = useCartStore();
   const wishlistItems = useWishlistStore(state => state.wishlistItems);
   const toggleWishlist = useWishlistStore(state => state.toggleWishlist);
   const { isAuthenticated } = useAuthStore();
@@ -129,7 +130,17 @@ export default function ProductCard({ product, onQuickView }) {
     ? Math.round(((selectedVariant.mrp - selectedVariant.price) / selectedVariant.mrp) * 100)
     : 0;
 
-  const imageUrl = product.images?.length > 0 ? product.images[0].url : product.image;
+  const variantId = selectedVariant.isBase ? null : selectedVariant.id;
+  const cartItem = cartItems.find(
+    (item) => item.productId === product.id && 
+    (variantId ? item.variantId === variantId : !item.variantId)
+  );
+
+  const rawFrontImage = product.image || (product.images?.length > 0 ? product.images[0].url : null) || (product.galleryImages?.length > 0 ? product.galleryImages[0] : '/placeholder.png');
+  const rawBackImage = product.hoverImage || product.galleryImage || (product.images?.length > 1 ? product.images[1].url : null) || (product.galleryImages?.length > 1 ? product.galleryImages[1] : null);
+
+  const frontImage = getOptimizedImageUrl(rawFrontImage, { width: 400, height: 400, cropMode: 'fill' });
+  const backImage = rawBackImage ? getOptimizedImageUrl(rawBackImage, { width: 400, height: 400, cropMode: 'fill' }) : null;
 
   const handleAddToCart = async (e) => {
     if (e) e.stopPropagation();
@@ -176,25 +187,23 @@ export default function ProductCard({ product, onQuickView }) {
         className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-[#F8F5F0] border-b border-[#EAE4D8]/40 shrink-0 product-card-image-wrapper"
       >
         <img
-          src={imageUrl}
+          src={frontImage}
           alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 product-card-image"
+          width={400}
+          height={400}
+          loading="lazy"
+          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-all duration-300 product-card-image"
         />
-        
-        {/* Hover Quick View Overlay */}
-        <div className="absolute inset-0 bg-[#2F3B0C]/35 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center z-10">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onQuickView) onQuickView(product);
-            }}
-            className="bg-white hover:bg-cream-bg text-dark-olive text-[11px] font-sans font-bold uppercase tracking-wider py-2 px-4 rounded-full shadow-lg transform translate-y-3 group-hover:translate-y-0 transition-all duration-300 hover:scale-105 cursor-pointer border-none flex items-center gap-1.5 z-20"
-          >
-            <FiSearch className="w-3.5 h-3.5" />
-            <span>Quick View</span>
-          </button>
-        </div>
+        {backImage && (
+          <img
+            src={backImage}
+            alt={`${product.name} back view`}
+            width={400}
+            height={400}
+            loading="lazy"
+            className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300 product-card-image-hover"
+          />
+        )}
 
         {/* Wishlist Button */}
         <button 
@@ -345,23 +354,77 @@ export default function ProductCard({ product, onQuickView }) {
             </div>
           </div>
           
-          <button 
-            type="button"
-            onClick={handleAddToCart}
-            disabled={isOutOfStock || isAdding}
-            className={`px-2.5 py-1.5 sm:px-4 sm:py-2.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider rounded-xl transition-all duration-300 flex items-center justify-center space-x-1 shadow-sm border-none cursor-pointer select-none product-card-add-btn ${
-              isOutOfStock 
-                ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
-                : isAdded 
-                  ? 'bg-[#4E641A] text-white' 
-                  : 'bg-[#4E641A] hover:bg-[#2F3B0C] text-white hover:scale-[1.03] active:scale-[0.98]'
-            }`}
-          >
-            <span>🛒</span>
-            <span>
-              {isOutOfStock ? 'Out' : isAdding ? '...' : isAdded ? '✓ Added' : 'Add'}
-            </span>
-          </button>
+          <div className="flex items-center h-8 sm:h-9 relative overflow-hidden select-none">
+            <AnimatePresence mode="wait">
+              {!cartItem ? (
+                <motion.button
+                  key="add"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  type="button"
+                  onClick={handleAddToCart}
+                  disabled={isOutOfStock || isAdding}
+                  className={`px-2.5 py-1.5 sm:px-4 sm:py-2 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider rounded-xl transition-all duration-350 flex items-center justify-center space-x-1 shadow-sm border-none cursor-pointer select-none product-card-add-btn h-full w-full ${
+                    isOutOfStock 
+                      ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
+                      : 'bg-[#4E641A] hover:bg-[#2F3B0C] text-white hover:scale-[1.03] active:scale-[0.98]'
+                  }`}
+                >
+                  <span>🛒</span>
+                  <span>
+                    {isOutOfStock ? 'Out' : isAdding ? 'Adding...' : 'Add'}
+                  </span>
+                </motion.button>
+              ) : (
+                <motion.div
+                  key="quantity-selector"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="flex items-center justify-between bg-white border border-[#4E641A] text-[#4E641A] rounded-xl h-full shadow-sm w-20 sm:w-24 overflow-hidden"
+                >
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        if (cartItem.quantity > 1) {
+                          await updateQuantity(cartItem.id, cartItem.quantity - 1);
+                        } else {
+                          await removeItem(cartItem.id);
+                        }
+                      } catch (err) {
+                        console.error(err);
+                      }
+                    }}
+                    className="px-2 sm:px-2.5 h-full bg-transparent hover:bg-[#4E641A]/5 text-[#4E641A] font-bold text-xs sm:text-sm border-none cursor-pointer flex items-center justify-center transition active:scale-90"
+                  >
+                    -
+                  </button>
+                  <span className="font-sans text-[10px] sm:text-xs font-extrabold text-stone-900 select-none">
+                    {cartItem.quantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        await updateQuantity(cartItem.id, cartItem.quantity + 1);
+                      } catch (err) {
+                        console.error(err);
+                      }
+                    }}
+                    className="px-2 sm:px-2.5 h-full bg-transparent hover:bg-[#4E641A]/5 text-[#4E641A] font-bold text-xs sm:text-sm border-none cursor-pointer flex items-center justify-center transition active:scale-90"
+                  >
+                    +
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </motion.div>

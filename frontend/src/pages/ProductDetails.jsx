@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Profiler } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FiCheck, FiShoppingBag, FiInfo, FiTruck, FiArrowLeft, FiHeart, FiStar, FiPlus, FiMinus, FiTrash2 } from 'react-icons/fi';
 import { FaWhatsapp } from 'react-icons/fa';
@@ -9,6 +9,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useModalStore } from '../store/useModalStore';
 import api from '../utils/api';
 import UnifiedUploader from '../components/UnifiedUploader';
+import { getOptimizedImageUrl } from '../utils/imageOptimizer';
 
 // Simple, high-quality, organic confetti effect
 const triggerConfetti = (canvasEl) => {
@@ -82,6 +83,8 @@ export default function ProductDetails() {
   const [activeImage, setActiveImage] = useState('');
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [allVariants, setAllVariants] = useState([]);
+  const [isAdding, setIsAdding] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   // Review form states
   const [rating, setRating] = useState(5);
@@ -155,15 +158,22 @@ export default function ProductDetails() {
         setSelectedVariant(null);
       }
       
-      // Fetch related products under same category
-      const categoryName = (prod.categories && prod.categories.length > 0)
-        ? prod.categories[0].name
-        : (prod.category?.name || 'Staples');
-      const relResponse = await api.get(`/products?category=${categoryName}&limit=3`);
-      setRelatedProducts(relResponse.products.filter(p => p.id !== response.product.id) || []);
-      setIsLoading(false);
+      // Fetch related products under same category - isolated error handling
+      try {
+        const categoryName = (prod.categories && prod.categories.length > 0)
+          ? prod.categories[0].name
+          : (prod.category?.name || 'Staples');
+        const relResponse = await api.get(`/products?category=${categoryName}&limit=4`);
+        if (relResponse && relResponse.products) {
+          setRelatedProducts(relResponse.products.filter(p => p.id !== prod.id).slice(0, 3));
+        }
+      } catch (relErr) {
+        console.error("Failed to fetch related products, using fallback empty list:", relErr);
+        setRelatedProducts([]);
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Failed to fetch product details:", err);
+    } finally {
       setIsLoading(false);
     }
   };
@@ -180,10 +190,14 @@ export default function ProductDetails() {
       useAuthStore.getState().setLoginRequiredModalOpen(true);
       return;
     }
+    if (isAdding) return;
+    setIsAdding(true);
     try {
       await addToCart(product.id, getSelectedVariantId(), quantity);
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -193,11 +207,15 @@ export default function ProductDetails() {
       useAuthStore.getState().setLoginRequiredModalOpen(true);
       return;
     }
+    if (isProcessing) return;
+    setIsProcessing(true);
     try {
       await addToCart(product.id, getSelectedVariantId(), quantity, true);
       navigate('/checkout');
     } catch (err) {
       modal.alert('Action Failed', err.message, 'error');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -271,8 +289,59 @@ export default function ProductDetails() {
     `Namaste Suryodaya Farms! I am interested in inquiring about your premium organic "${product.name}" (${selectedVariant ? selectedVariant.price : product.price}). Please share more details.`
   );
 
+  const getProductImagesList = () => {
+    if (!product) return [];
+    const list = [];
+    
+    // Add Main Image
+    if (product.image) {
+      list.push(product.image);
+    } else if (product.images && product.images.length > 0) {
+      const featuredImg = product.images.find(img => img.isFeatured);
+      if (featuredImg) {
+        list.push(featuredImg.url);
+      } else {
+        list.push(product.images[0].url);
+      }
+    }
+    
+    // Add Gallery Image (hoverImage / galleryImage)
+    if (product.galleryImage) {
+      list.push(product.galleryImage);
+    } else if (product.hoverImage) {
+      list.push(product.hoverImage);
+    }
+    
+    // Add other images from images relation
+    if (product.images && product.images.length > 0) {
+      product.images.forEach(img => {
+        if (!list.includes(img.url)) {
+          list.push(img.url);
+        }
+      });
+    }
+    
+    // Add any from galleryImages array in case of future support
+    if (product.galleryImages && Array.isArray(product.galleryImages)) {
+      product.galleryImages.forEach(img => {
+        if (img && !list.includes(img)) {
+          list.push(img);
+        }
+      });
+    }
+    
+    return list.filter(Boolean);
+  };
+
+  const onRenderCallback = (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
+    if (import.meta.env.DEV) {
+      console.log(`[Profiler] ${id} - Phase: ${phase} - Actual Duration: ${actualDuration.toFixed(2)}ms`);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-cream-bg pt-28 pb-20 px-6 md:px-12">
+    <Profiler id="ProductDetails" onRender={onRenderCallback}>
+      <div className="min-h-screen bg-cream-bg pt-28 pb-20 px-6 md:px-12">
       <div className="max-w-7xl mx-auto flex flex-col gap-16">
         
         {/* Back navigation */}
@@ -283,15 +352,18 @@ export default function ProductDetails() {
           <FiArrowLeft />
           <span>Back to Marketplace</span>
         </button>
-
+        
         {/* 1. Splitted Image and Details Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
           {/* Column 1: Image Gallery & Badges */}
           <div className="flex flex-col gap-6 w-full text-left">
             <div className="relative aspect-square w-full rounded-[36px] overflow-hidden border border-light-beige shadow-sm bg-light-beige">
               <img
-                src={activeImage}
+                src={getOptimizedImageUrl(activeImage, { width: 600, height: 600, cropMode: 'fill' })}
                 alt={product.name}
+                width={600}
+                height={600}
+                loading="lazy"
                 className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
               />
               
@@ -305,7 +377,7 @@ export default function ProductDetails() {
 
             {/* Thumbnails list */}
             <div className="flex gap-4">
-              {[product.image, ...(product.images?.map(i => i.url) || [])].filter(Boolean).map((img, i) => (
+              {getProductImagesList().map((img, i) => (
                 <button
                   key={i}
                   onClick={() => setActiveImage(img)}
@@ -313,7 +385,14 @@ export default function ProductDetails() {
                     activeImage === img ? 'border-primary-green scale-95 shadow-inner' : 'border-light-beige hover:border-sunrise-gold'
                   }`}
                 >
-                  <img src={img} alt="Product Thumbnail" className="w-full h-full object-cover" />
+                  <img 
+                    src={getOptimizedImageUrl(img, { width: 80, height: 80, cropMode: 'fill' })} 
+                    alt={`Product Thumbnail ${i + 1}`} 
+                    width={80}
+                    height={80}
+                    loading="lazy"
+                    className="w-full h-full object-cover" 
+                  />
                 </button>
               ))}
             </div>
@@ -368,11 +447,24 @@ export default function ProductDetails() {
                 <span className="font-serif text-2xl font-bold text-primary-green">
                   ₹{selectedVariant ? selectedVariant.price : product.price}
                 </span>
-                {((selectedVariant ? (selectedVariant.mrp || product.compareAtPrice) : product.compareAtPrice)) && (
-                  <span className="font-sans text-sm text-dark-text/40 line-through font-light">
-                    ₹{selectedVariant ? (selectedVariant.mrp || product.compareAtPrice) : product.compareAtPrice}
-                  </span>
-                )}
+                {(() => {
+                  const mrpVal = selectedVariant ? (selectedVariant.mrp || product.compareAtPrice) : product.compareAtPrice;
+                  const priceVal = selectedVariant ? selectedVariant.price : product.price;
+                  if (!mrpVal || mrpVal <= priceVal) return null;
+                  const discVal = Math.round(((mrpVal - priceVal) / mrpVal) * 100);
+                  return (
+                    <div className="flex items-center gap-2">
+                      <span className="font-sans text-sm text-dark-text/40 line-through font-light">
+                        ₹{mrpVal}
+                      </span>
+                      {discVal > 0 && (
+                        <span className="text-[10px] font-bold text-[#C68A2B] bg-[#C68A2B]/10 px-2 py-0.5 rounded shadow-xs select-none">
+                          {discVal}% OFF
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${
                 isOutOfStock
@@ -435,27 +527,27 @@ export default function ProductDetails() {
             <div className="flex flex-col sm:flex-row gap-4 mt-2">
               <button
                 onClick={handleAddToCart}
-                disabled={isOutOfStock}
+                disabled={isOutOfStock || isAdding}
                 className={`flex-1 flex items-center justify-center gap-2 border font-sans text-xs font-semibold uppercase tracking-widest py-4.5 rounded-xl transition-colors duration-300 shadow-sm cursor-pointer ${
-                  isOutOfStock
+                  isOutOfStock || isAdding
                     ? 'bg-stone-100 border-stone-200 text-stone-400 cursor-not-allowed'
                     : 'border-primary-green text-primary-green hover:bg-primary-green hover:text-white'
                 }`}
               >
                 <FiShoppingBag />
-                <span>{isOutOfStock ? 'Sold Out' : 'Add to Basket'}</span>
+                <span>{isOutOfStock ? 'Sold Out' : isAdding ? 'Adding...' : 'Add to Basket'}</span>
               </button>
               
               <button
                 onClick={handleBuyNow}
-                disabled={isOutOfStock}
+                disabled={isOutOfStock || isProcessing}
                 className={`flex-grow flex items-center justify-center font-sans text-xs font-semibold uppercase tracking-widest py-4.5 rounded-xl transition-colors duration-300 shadow-md cursor-pointer ${
-                  isOutOfStock
+                  isOutOfStock || isProcessing
                     ? 'bg-stone-300 text-stone-400 cursor-not-allowed'
                     : 'bg-primary-green hover:bg-dark-olive text-white'
                 }`}
               >
-                {isOutOfStock ? 'Out of Stock' : 'Buy Now'}
+                {isOutOfStock ? 'Out of Stock' : isProcessing ? 'Processing...' : 'Buy Now'}
               </button>
             </div>
 
@@ -525,8 +617,11 @@ export default function ProductDetails() {
                         {rev.reviewImages.map((img, index) => (
                           <img 
                             key={index} 
-                            src={img} 
+                            src={getOptimizedImageUrl(img, { width: 48, height: 48, cropMode: 'fill' })} 
                             alt={`Review Thumbnail ${index + 1}`} 
+                            width={48}
+                            height={48}
+                            loading="lazy"
                             className="w-12 h-12 object-cover rounded-lg border border-light-beige" 
                           />
                         ))}
@@ -659,10 +754,17 @@ export default function ProductDetails() {
                 <div
                   key={p.id}
                   onClick={() => navigate(`/products/${p.slug}`)}
-                  className="group bg-cream-bg border border-light-beige rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-500 cursor-pointer flex flex-col h-full animate-pulse"
+                  className="group bg-cream-bg border border-light-beige rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-500 cursor-pointer flex flex-col h-full"
                 >
                   <div className="relative aspect-square w-full overflow-hidden bg-light-beige shrink-0">
-                    <img src={p.image || p.images[0]?.url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                    <img 
+                      src={getOptimizedImageUrl(p.image || p.images?.[0]?.url, { width: 400, height: 400, cropMode: 'fill' })} 
+                      alt={p.name} 
+                      width={400}
+                      height={400}
+                      loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+                    />
                     <span className="absolute bottom-4 left-4 bg-cream-bg/95 backdrop-blur-sm border border-light-beige text-dark-olive font-sans text-[8px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-md">
                       {(p.categories && p.categories.length > 0) ? p.categories[0].name : (p.category?.name || 'Vedic')}
                     </span>
@@ -769,6 +871,7 @@ export default function ProductDetails() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </Profiler>
   );
 }

@@ -16,15 +16,19 @@ export const useSettingsStore = create((set, get) => ({
     socialInstagram: 'https://instagram.com/suryodayafarms',
     socialYoutube: 'https://youtube.com/suryodayafarms'
   },
+  settingsLoaded: false,
   isLoading: false,
   error: null,
 
   fetchSettings: async () => {
+    // Return cached settings if already loaded
+    if (get().settingsLoaded) return;
+    
     set({ isLoading: true, error: null });
     try {
       const response = await api.get('/public/settings');
       if (response.success && response.settings) {
-        set({ settings: response.settings, isLoading: false });
+        set({ settings: response.settings, settingsLoaded: true, isLoading: false });
       } else {
         set({ isLoading: false });
       }

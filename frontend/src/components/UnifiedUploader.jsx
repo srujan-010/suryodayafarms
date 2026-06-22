@@ -3,6 +3,8 @@ import { FiUploadCloud, FiTrash2, FiImage, FiCheckCircle, FiAlertCircle, FiDatab
 import api from '../utils/api';
 import ImageCropper from '../admin/components/ImageCropper';
 
+import { useFeedbackStore } from '../store/useFeedbackStore';
+
 export default function UnifiedUploader({
   value,
   onChange,
@@ -110,26 +112,34 @@ export default function UnifiedUploader({
     setIsUploading(true);
     setProgress(20);
     setErrorMessage('');
+    useFeedbackStore.getState().showLoader('Uploading image... 20%');
     
     try {
       setProgress(50);
+      useFeedbackStore.getState().showLoader('Uploading image... 50%');
       const response = await api.post('/auth/upload-cloudinary', {
         image: base64String,
         folder: folder
       });
       
       setProgress(90);
+      useFeedbackStore.getState().showLoader('Uploading image... 90%');
       if (response.success && response.url) {
         onChange(response.url);
         saveToHistory(response.url);
         setProgress(100);
+        useFeedbackStore.getState().showLoader('Uploading image... 100%');
         setTimeout(() => setProgress(0), 1500);
+        useFeedbackStore.getState().hideLoader();
+        useFeedbackStore.getState().showToast('✅ Image uploaded successfully', 'success');
       } else {
         throw new Error(response.message || 'Upload failed');
       }
     } catch (err) {
+      useFeedbackStore.getState().hideLoader();
       setErrorMessage(err.message || 'Error uploading image. Please try again.');
       setProgress(0);
+      useFeedbackStore.getState().showToast(`❌ Upload failed: ${err.message}`, 'error');
     } finally {
       setIsUploading(false);
     }

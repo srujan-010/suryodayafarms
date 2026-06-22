@@ -5,13 +5,12 @@ import { protect } from '../middlewares/authMiddleware.js';
 const router = express.Router();
 
 // 1. LIST PRODUCTS (SEARCH, FILTER, SORT, PAGINATE)
-// GET /api/products
 router.get('/', async (req, res, next) => {
-  const { search, category, sort, page = 1, limit = 9, isFeatured, isTrending, isBestseller, isNewLaunch } = req.query;
+  const { search, category, sort, page = 1, limit, isFeatured, isTrending, isBestseller, isNewLaunch } = req.query;
 
   try {
-    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
-    const take = parseInt(limit, 10);
+    const skip = limit ? (parseInt(page, 10) - 1) * parseInt(limit, 10) : undefined;
+    const take = limit ? parseInt(limit, 10) : undefined;
 
     // Build filter query object
     const filter = {
@@ -91,7 +90,9 @@ router.get('/', async (req, res, next) => {
       return {
         ...prod,
         averageRating,
-        totalReviews
+        totalReviews,
+        galleryImage: prod.hoverImage || null,
+        galleryImages: prod.hoverImage ? [prod.hoverImage] : []
       };
     });
 
@@ -99,7 +100,7 @@ router.get('/', async (req, res, next) => {
       success: true,
       count: productsWithRatings.length,
       totalCount,
-      totalPages: Math.ceil(totalCount / take),
+      totalPages: take ? Math.ceil(totalCount / take) : 1,
       currentPage: parseInt(page, 10),
       products: productsWithRatings,
     });
@@ -114,6 +115,9 @@ router.get('/', async (req, res, next) => {
 router.get('/categories', async (req, res, next) => {
   try {
     const categories = await prisma.category.findMany({
+      where: {
+        slug: { not: 'uncategorized' }
+      },
       include: {
         _count: { select: { products: true } }
       },
@@ -133,7 +137,7 @@ router.get('/categories/:slug', async (req, res, next) => {
     const category = await prisma.category.findUnique({
       where: { slug }
     });
-    if (!category) {
+    if (!category || slug === 'uncategorized') {
       return res.status(404).json({ success: false, message: 'Category not found.' });
     }
     res.status(200).json({ success: true, category });
@@ -181,7 +185,9 @@ router.get('/:slug', async (req, res, next) => {
       product: {
         ...product,
         averageRating,
-        totalReviews
+        totalReviews,
+        galleryImage: product.hoverImage || null,
+        galleryImages: product.hoverImage ? [product.hoverImage] : []
       }
     });
   } catch (error) {

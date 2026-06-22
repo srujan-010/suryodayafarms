@@ -560,7 +560,7 @@ export default function ProfileDashboard() {
             <img 
               src="https://i.ibb.co/Pz01P9Y5/Whats-App-Image-2026-05-29-at-6-51-48-PM-removebg-preview.png" 
               alt="Suryodaya Farms Logo" 
-              className="w-12 h-12 md:w-14 md:h-14 object-contain transition group-hover:scale-105 duration-300"
+              className="w-16 h-16 md:w-20 md:h-20 object-contain transition group-hover:scale-105 duration-300"
             />
             <span className="font-serif text-lg md:text-xl font-bold tracking-widest text-[#2F3B0C] uppercase leading-none">
               Suryodaya Farms

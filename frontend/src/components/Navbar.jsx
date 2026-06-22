@@ -78,7 +78,7 @@ export default function Navbar() {
             <img 
               src="https://i.ibb.co/Pz01P9Y5/Whats-App-Image-2026-05-29-at-6-51-48-PM-removebg-preview.png" 
               alt="Suryodaya Farms Logo" 
-              className="w-9 h-9 sm:w-12 sm:h-12 md:w-14 md:h-14 object-contain transition duration-500 group-hover:scale-105"
+              className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 object-contain transition duration-500 group-hover:scale-105"
             />
             <div className="flex flex-col justify-center text-left">
               <span className="font-serif text-base sm:text-xl md:text-2xl font-bold tracking-wide text-dark-olive leading-none group-hover:text-primary-green transition-colors duration-300">
@@ -373,7 +373,7 @@ export default function Navbar() {
               <img 
                 src="https://i.ibb.co/Pz01P9Y5/Whats-App-Image-2026-05-29-at-6-51-48-PM-removebg-preview.png" 
                 alt="Suryodaya Farms Logo" 
-                className="w-10 h-10 object-contain"
+                className="w-14 h-14 object-contain"
               />
               <div className="flex flex-col justify-center">
                 <span className="font-serif text-lg font-bold text-dark-olive leading-none">

@@ -845,4 +845,215 @@
   }
 }
 
+/* ==========================================================================
+   ADMIN PORTAL ACCESSIBILITY, CONTRAST, AND VISIBILITY REDESIGN OVERRIDES
+   ========================================================================== */
+
+/* Outer Admin Wrapper */
+.admin-dashboard-container {
+  color: #1f2937 !important;
+}
+
+/* Increase body text sizes by 1-2px globally in the admin portal */
+.admin-dashboard-container .text-xs {
+  font-size: 13.5px !important;
+}
+.admin-dashboard-container .text-\[10px\] {
+  font-size: 12px !important;
+}
+.admin-dashboard-container .text-\[9px\] {
+  font-size: 11px !important;
+}
+.admin-dashboard-container .text-\[8px\] {
+  font-size: 10.5px !important;
+}
+.admin-dashboard-container .text-\[11px\] {
+  font-size: 12.5px !important;
+}
+.admin-dashboard-container .text-sm {
+  font-size: 15px !important;
+}
+.admin-dashboard-container .text-base {
+  font-size: 17.5px !important;
+}
+
+/* Use darker text colors for high contrast and AA accessibility */
+.admin-dashboard-container .text-stone-600,
+.admin-dashboard-container .text-stone-500,
+.admin-dashboard-container .text-stone-700 {
+  color: #1f2937 !important;
+}
+
+.admin-dashboard-container .text-stone-400 {
+  color: #4b5563 !important;
+}
+
+.admin-dashboard-container .text-stone-450 {
+  color: #374151 !important;
+}
+
+.admin-dashboard-container .text-\[\#37411A\],
+.admin-dashboard-container .text-\[\#2F3B0C\] {
+  color: #111827 !important;
+}
+
+/* Section Headings - Weight 700 and sans-serif for clean dashboard look */
+.admin-dashboard-container h1,
+.admin-dashboard-container h2,
+.admin-dashboard-container h3,
+.admin-dashboard-container h4,
+.admin-dashboard-container h5,
+.admin-dashboard-container h6,
+.admin-dashboard-container .font-serif.font-bold {
+  font-family: var(--font-sans) !important;
+  font-weight: 700 !important;
+  color: #111827 !important;
+}
+
+/* Sidebar Menu Items adjustments */
+.admin-dashboard-container aside nav button {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+  font-family: var(--font-sans) !important;
+}
+
+.admin-dashboard-container aside nav button svg {
+  width: 1.25rem !important;
+  height: 1.25rem !important;
+  transition: all 0.2s ease !important;
+}
+
+.admin-dashboard-container aside nav button div.flex.items-center span {
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: 0.015em !important;
+}
+
+/* Sidebar Active & Inactive contrasts */
+.admin-dashboard-container aside nav button.bg-\[\#4E641A\] {
+  background-color: #4E641A !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 12px rgba(78, 100, 26, 0.22) !important;
+}
+
+.admin-dashboard-container aside nav button:not(.bg-\[\#4E641A\]) {
+  color: #4b5563 !important;
+  background-color: transparent !important;
+}
+
+.admin-dashboard-container aside nav button:not(.bg-\[\#4E641A\]):hover {
+  color: #111827 !important;
+  background-color: #f3f4f6 !important;
+}
+
+/* Sidebar User Info & Logout Border color overrides */
+.admin-dashboard-container aside {
+  background-color: #f9fafb !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Workspace main content canvas */
+.admin-dashboard-container main {
+  background-color: #f9fafb !important;
+}
+
+/* Card & Section Container Upgrades */
+.admin-dashboard-container div.bg-white,
+.admin-dashboard-container div.bg-\[\#FAF7F2\],
+.admin-dashboard-container div.bg-\[\#FDFBF7\] {
+  background-color: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.01) !important;
+}
+
+/* Reduce light beige borders globally in admin portal */
+.admin-dashboard-container .border-\[\#EDE7D9\],
+.admin-dashboard-container .border-t-\[\#EDE7D9\],
+.admin-dashboard-container .border-b-\[\#EDE7D9\],
+.admin-dashboard-container .border-r-\[\#EDE7D9\],
+.admin-dashboard-container .border-l-\[\#EDE7D9\] {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Forms Accessibility & Visibility Redesign */
+.admin-dashboard-container label {
+  color: #1f2937 !important;
+  font-weight: 500 !important;
+  font-size: 13.5px !important;
+}
+
+.admin-dashboard-container input,
+.admin-dashboard-container select,
+.admin-dashboard-container textarea {
+  background-color: #ffffff !important;
+  border: 1.5px solid #d1d5db !important;
+  border-radius: 12px !important;
+  color: #111827 !important;
+  font-size: 14.5px !important;
+  font-family: var(--font-sans) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  transition: all 0.2s ease !important;
+}
+
+.admin-dashboard-container input:hover,
+.admin-dashboard-container select:hover,
+.admin-dashboard-container textarea:hover {
+  border-color: #9ca3af !important;
+}
+
+.admin-dashboard-container input:focus,
+.admin-dashboard-container select:focus,
+.admin-dashboard-container textarea:focus {
+  border-color: #4E641A !important;
+  box-shadow: 0 0 0 4px rgba(78, 100, 26, 0.15) !important;
+  outline: none !important;
+}
+
+.admin-dashboard-container input::placeholder,
+.admin-dashboard-container textarea::placeholder {
+  color: #6b7280 !important;
+}
+
+/* UnifiedUploader enhancements */
+.admin-dashboard-container .border-dashed {
+  border: 2px dashed #9ca3af !important;
+  background-color: #ffffff !important;
+}
+
+.admin-dashboard-container .border-dashed:hover {
+  border-color: #4E641A !important;
+  background-color: rgba(78, 100, 26, 0.02) !important;
+}
+
+/* Premium Product Cards override */
+.admin-dashboard-container .admin-product-card {
+  background-color: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.03) !important;
+  padding: 1.5rem 1.75rem !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border-radius: 16px !important;
+}
+
+.admin-dashboard-container .admin-product-card:hover {
+  transform: translateY(-2.5px) !important;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.02) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+.admin-dashboard-container .admin-product-name {
+  font-family: var(--font-sans) !important;
+  font-size: 19px !important;
+  font-weight: 600 !important;
+  color: #111827 !important;
+}
+
+.admin-dashboard-container .admin-product-price {
+  font-size: 19px !important;
+  font-weight: 700 !important;
+  color: #4E641A !important;
+}
+
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Profiler } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -20,40 +20,16 @@ import { GiWheat, GiWaterDrop, GiSprout, GiSun } from 'react-icons/gi';
 import { useCartStore } from '../store/useCartStore';
 import { useWishlistStore } from '../store/useWishlistStore';
 import { useAuthStore } from '../store/useAuthStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import api from '../utils/api';
 import ProductCard from '../components/ProductCard';
+import { getOptimizedImageUrl } from '../utils/imageOptimizer';
+
+// Module cache for Stale-While-Revalidate loading
+let homepageCache = null;
 
 const getCloudinaryCroppedUrl = (url, crop, options = {}) => {
-  if (!url) return url;
-  if (url.includes('res.cloudinary.com')) {
-    const uploadIndex = url.indexOf('/upload/');
-    if (uploadIndex !== -1) {
-      const prefix = url.substring(0, uploadIndex + 8);
-      const suffix = url.substring(uploadIndex + 8);
-      
-      const transformations = [];
-      
-      if (crop && crop.cropX !== undefined && crop.cropX !== null && crop.cropWidth) {
-        transformations.push(`c_crop,x_${crop.cropX},y_${crop.cropY},w_${crop.cropWidth},h_${crop.cropHeight}`);
-      }
-      
-      const { width, height, cropMode = 'fill' } = options;
-      if (width) {
-        transformations.push(`w_${width}`);
-      }
-      if (height) {
-        transformations.push(`h_${height}`);
-      }
-      if (width || height) {
-        transformations.push(`c_${cropMode}`);
-      }
-      
-      transformations.push('f_auto,q_auto');
-      
-      return `${prefix}${transformations.join('/')}/${suffix}`;
-    }
-  }
-  return url;
+  return getOptimizedImageUrl(url, { ...options, crop });
 };
 
 export default function Home() {
@@ -64,44 +40,32 @@ export default function Home() {
   const { wishlistItems, toggleWishlist, fetchWishlist } = useWishlistStore();
   const { isAuthenticated, setAuthModalOpen } = useAuthStore();
 
-  // Local state
-  const [productsList, setProductsList] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Local state initialized from cache if available for instant SWR loading
+  const [productsList, setProductsList] = useState(homepageCache?.productsList || []);
+  const [homepageCategories, setHomepageCategories] = useState(homepageCache?.homepageCategories || []);
+  const [homepageCollections, setHomepageCollections] = useState(homepageCache?.homepageCollections || []);
+  const [heroesList, setHeroesList] = useState(homepageCache?.heroesList || []);
+  const [sectionsSequence, setSectionsSequence] = useState(homepageCache?.sectionsSequence || ['hero', 'categories', 'best-sellers', 'trust', 'collections', 'benefits', 'footer-banner']);
+  const [activeCampaign, setActiveCampaign] = useState(homepageCache?.activeCampaign || null);
+  const [activeHero, setActiveHero] = useState(homepageCache?.activeHero || null);
+  const [sliderAutoRotate, setSliderAutoRotate] = useState(homepageCache?.sliderAutoRotate !== undefined ? homepageCache.sliderAutoRotate : true);
+  const [sliderDuration, setSliderDuration] = useState(homepageCache?.sliderDuration || 5);
+  const [testimonialsList, setTestimonialsList] = useState(homepageCache?.testimonialsList || []);
+
+  const [isLoading, setIsLoading] = useState(!homepageCache);
+  const [isConfigLoaded, setIsConfigLoaded] = useState(!!homepageCache);
+  const [hasHydrated, setHasHydrated] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '' });
   const [activeCategory, setActiveCategory] = useState({ id: 'All', name: 'All' });
   const [activeBenefit, setActiveBenefit] = useState('All');
-  const [activeCampaign, setActiveCampaign] = useState(null);
-  const [activeHero, setActiveHero] = useState(null);
-  const [homepageCategories, setHomepageCategories] = useState([]);
-  const [homepageCollections, setHomepageCollections] = useState([]);
-  const [sectionsSequence, setSectionsSequence] = useState(['hero', 'categories', 'best-sellers', 'trust', 'collections', 'benefits', 'footer-banner']);
-  const [hasHydrated, setHasHydrated] = useState(false);
-  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
-
+  
   useEffect(() => {
     setHasHydrated(true);
   }, []);
 
   // Carousel slider states
-  const [heroesList, setHeroesList] = useState([]);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
-  const [sliderAutoRotate, setSliderAutoRotate] = useState(true);
-  const [sliderDuration, setSliderDuration] = useState(5);
   const [slideDirection, setSlideDirection] = useState(1); // 1 = forward, -1 = backward
-
-  // Testimonials State
-  const [testimonialsList, setTestimonialsList] = useState([]);
-
-  const fetchTestimonials = async () => {
-    try {
-      const response = await api.get('/public/testimonials');
-      if (response.success && response.testimonials) {
-        setTestimonialsList(response.testimonials);
-      }
-    } catch (err) {
-      console.error('Failed to fetch testimonials:', err);
-    }
-  };
 
   const nextSlide = () => {
     if (heroesList.length <= 1) return;
@@ -152,59 +116,67 @@ export default function Home() {
     return () => clearInterval(timer);
   }, [sliderAutoRotate, heroesList, sliderDuration, currentSlideIndex]);
 
-  useEffect(() => {
-    fetchProducts();
-    fetchHomepageConfig();
-    if (isAuthenticated) {
-      fetchWishlist();
+  const loadHomepageData = async () => {
+    // If not cached, set loading state to true
+    if (!homepageCache) {
+      setIsLoading(true);
+      setIsConfigLoaded(false);
     }
-  }, [isAuthenticated]);
 
-  const fetchHomepageConfig = async () => {
     try {
-      const response = await api.get('/public/homepage');
-      if (response.success) {
-        if (response.campaign) {
-          setActiveCampaign(response.campaign);
-        }
-        if (response.hero) {
-          setActiveHero(response.hero);
-        }
-        if (response.heroes && response.heroes.length > 0) {
-          setHeroesList(response.heroes);
-        } else if (response.hero) {
-          setHeroesList([response.hero]);
-        }
-        if (response.autoRotate !== undefined) {
-          setSliderAutoRotate(response.autoRotate);
-        }
-        if (response.slideDuration !== undefined) {
-          setSliderDuration(response.slideDuration);
-        }
-        if (response.categories && response.categories.length > 0) {
-          setHomepageCategories(response.categories);
-        }
-        if (response.collections && response.collections.length > 0) {
-          setHomepageCollections(response.collections);
-        }
-        if (response.sectionOrder) {
-          setSectionsSequence(response.sectionOrder.split(',').filter(s => s !== 'reviews'));
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch dynamic homepage configuration, using fallbacks:", err);
-    } finally {
-      setIsConfigLoaded(true);
-    }
-  };
+      // Define the promises with catch handlers for error resilience
+      const productsPromise = api.get('/products')
+        .catch(err => {
+          console.error("Database fetch products failed:", err);
+          return { products: [] };
+        });
 
-  const fetchProducts = async () => {
-    setIsLoading(true);
-    try {
-      const response = await api.get('/products?limit=100');
-      if (response.products && response.products.length > 0) {
-        // Map api product keys to our uniform layout
-        const mapped = response.products.map(p => ({
+      const cmsPromise = api.get('/public/homepage')
+        .catch(err => {
+          console.error("Failed to fetch dynamic homepage configuration:", err);
+          return { success: false };
+        });
+
+      const categoriesPromise = api.get('/products/categories')
+        .catch(err => {
+          console.error("Failed to fetch categories catalog:", err);
+          return { categories: [] };
+        });
+
+      const settingsPromise = useSettingsStore.getState().fetchSettings()
+        .catch(err => {
+          console.error("Failed to fetch settings:", err);
+        });
+
+      const cartPromise = isAuthenticated
+        ? useCartStore.getState().fetchCart().catch(err => console.error("Failed to fetch cart:", err))
+        : Promise.resolve();
+
+      const wishlistPromise = isAuthenticated
+        ? useWishlistStore.getState().fetchWishlist().catch(err => console.error("Failed to fetch wishlist:", err))
+        : Promise.resolve();
+
+      const testimonialsPromise = api.get('/public/testimonials')
+        .catch(err => {
+          console.error("Failed to fetch testimonials:", err);
+          return { success: false, testimonials: [] };
+        });
+
+      // Load all in parallel using Promise.all
+      const [productsRes, cmsRes, categoriesRes, _settings, _cart, _wishlist, testimonialsRes] = await Promise.all([
+        productsPromise,
+        cmsPromise,
+        categoriesPromise,
+        settingsPromise,
+        cartPromise,
+        wishlistPromise,
+        testimonialsPromise
+      ]);
+
+      // 1. Process Products
+      let mappedProducts = [];
+      if (productsRes.products && productsRes.products.length > 0) {
+        mappedProducts = productsRes.products.map(p => ({
           id: p.id || p._id,
           name: p.name,
           price: p.price,
@@ -232,17 +204,84 @@ export default function Home() {
           slug: p.slug,
           variants: p.variants || []
         }));
-        setProductsList(mapped);
-      } else {
-        setProductsList([]);
       }
+      setProductsList(mappedProducts);
+
+      // 2. Process CMS config
+      let freshHeroes = [];
+      let freshCampaign = null;
+      let freshHero = null;
+      let freshAutoRotate = true;
+      let freshDuration = 5;
+      let freshCategories = [];
+      let freshCollections = [];
+      let freshOrder = ['hero', 'categories', 'best-sellers', 'trust', 'collections', 'benefits', 'footer-banner'];
+
+      if (cmsRes.success) {
+        if (cmsRes.campaign) freshCampaign = cmsRes.campaign;
+        if (cmsRes.hero) freshHero = cmsRes.hero;
+        if (cmsRes.heroes && cmsRes.heroes.length > 0) {
+          freshHeroes = cmsRes.heroes;
+        } else if (cmsRes.hero) {
+          freshHeroes = [cmsRes.hero];
+        }
+        if (cmsRes.autoRotate !== undefined) freshAutoRotate = cmsRes.autoRotate;
+        if (cmsRes.slideDuration !== undefined) freshDuration = cmsRes.slideDuration;
+        if (cmsRes.categories) freshCategories = cmsRes.categories;
+        if (cmsRes.collections && cmsRes.collections.length > 0) freshCollections = cmsRes.collections;
+        if (cmsRes.sectionOrder) {
+          freshOrder = cmsRes.sectionOrder.split(',').filter(s => s !== 'reviews');
+        }
+
+        setActiveCampaign(freshCampaign);
+        setActiveHero(freshHero);
+        setHeroesList(freshHeroes);
+        setSliderAutoRotate(freshAutoRotate);
+        setSliderDuration(freshDuration);
+        setHomepageCategories(freshCategories);
+        setHomepageCollections(freshCollections);
+        setSectionsSequence(freshOrder);
+      }
+
+      // Fallback categories sync if dynamic CMS config didn't provide categories
+      if (freshCategories.length === 0 && categoriesRes.categories && categoriesRes.categories.length > 0) {
+        setHomepageCategories(categoriesRes.categories);
+        freshCategories = categoriesRes.categories;
+      }
+
+      // 3. Process Testimonials
+      let freshTestimonials = [];
+      if (testimonialsRes.success && testimonialsRes.testimonials) {
+        freshTestimonials = testimonialsRes.testimonials;
+        setTestimonialsList(freshTestimonials);
+      }
+
+      // Save to cache for SWR instant loads
+      homepageCache = {
+        productsList: mappedProducts,
+        homepageCategories: freshCategories.length > 0 ? freshCategories : homepageCategories,
+        homepageCollections: freshCollections,
+        heroesList: freshHeroes,
+        sectionsSequence: freshOrder,
+        activeCampaign: freshCampaign,
+        activeHero: freshHero,
+        sliderAutoRotate: freshAutoRotate,
+        sliderDuration: freshDuration,
+        testimonialsList: freshTestimonials
+      };
+
+    } catch (e) {
+      console.error("Critical error in parallel homepage data loading:", e);
+    } finally {
+      // Skeletons disappear immediately when data finishes loading
       setIsLoading(false);
-    } catch (err) {
-      console.error("Database fetch products failed:", err);
-      setProductsList([]);
-      setIsLoading(false);
+      setIsConfigLoaded(true);
     }
   };
+
+  useEffect(() => {
+    loadHomepageData();
+  }, [isAuthenticated]);
 
   const handleAddToCart = async (product) => {
     const hasVariants = product.variants && product.variants.length > 0;
@@ -302,26 +341,7 @@ export default function Home() {
     return p.categories?.some(cat => cat.id === activeId || cat.name === activeName || cat.slug === activeId) || p.categoryId === activeId;
   });
 
-  // Requirement 7: Add debugging logs
-  useEffect(() => {
-    const activeId = activeCategory?.id || (typeof activeCategory === 'string' ? activeCategory : '');
-    const activeName = activeCategory?.name || (typeof activeCategory === 'string' ? activeCategory : '');
-    const activeSlug = activeCategory?.slug || '';
 
-    if (activeCategory && activeCategory !== 'All' && activeId !== 'All' && activeName !== 'All') {
-      const totalLinkedProducts = productsList.filter(p => 
-        p.categories?.some(cat => cat.id === activeId || cat.name === activeName || cat.slug === activeId) || p.categoryId === activeId
-      );
-      console.log(`[Category Filter Debug Log]:`, {
-        selectedCategoryId: activeId,
-        selectedCategorySlug: activeSlug || (typeof activeCategory === 'string' ? activeCategory.toLowerCase().replace(/[^a-z0-9]+/g, '-') : ''),
-        productsReturnedCount: filteredProducts.length,
-        productsReturned: filteredProducts.map(p => p.name),
-        totalLinkedProductsCount: totalLinkedProducts.length,
-        totalLinkedProducts: totalLinkedProducts.map(p => p.name)
-      });
-    }
-  }, [activeCategory, productsList, filteredProducts]);
 
   const selectCategoryByName = (name) => {
     const found = homepageCategories.find(c => 
@@ -345,179 +365,25 @@ export default function Home() {
     return found ? found.slug : name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
   };
 
-    const renderCategoriesSection = () => {
-    console.log("homepageCollections:", homepageCollections);
-    
+  const renderCategoriesSection = () => {
     // Calculate if categories are loading or waiting for hydration
     const isLoadingCategoryData = !hasHydrated || !isConfigLoaded;
 
-    // Filter out categories designated for the homepage promo section from collections
-    const dynamicCats = homepageCollections.filter(c => {
-      if (c.description && c.description.startsWith('{')) {
-        try {
-          const parsed = JSON.parse(c.description);
-          return !!parsed.isPromoCategory;
-        } catch (e) {}
-      }
-      return false;
-    });
-    console.log("dynamicCats:", dynamicCats);
-
-    // Fallback static categories in case DB is not seeded or empty
-    const defaultCategories = [
-      {
-        id: "default-ghee",
-        name: "A2 Ghee",
-        slug: "ghee",
-        description: "Traditional slow curd-churned Bilona Ghee",
-        image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780167272/WhatsApp_Image_2026-05-30_at_9.07.15_PM_yifcop.jpg",
-        mobileImage: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780167272/WhatsApp_Image_2026-05-30_at_9.07.15_PM_yifcop.jpg",
-        overlayPosition: "bottom-left",
-        overlayDarkness: 0.5,
-        textColorTheme: "light",
-        isFeatured: true,
-        imageFocalPoint: "center",
-        hoverZoom: true,
-        ctaStyle: "arrow",
-        cornerRadius: "3xl",
-        ctaText: "Shop Collection"
-      },
-      {
-        id: "default-oils",
-        name: "Cold Pressed Oils",
-        slug: "cold-pressed-oils",
-        description: "Slow wood-pressed ghani unrefined oils",
-        image: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&q=80&w=800",
-        mobileImage: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&q=80&w=800",
-        overlayPosition: "bottom-left",
-        overlayDarkness: 0.55,
-        textColorTheme: "light",
-        isFeatured: false,
-        imageFocalPoint: "center",
-        hoverZoom: true,
-        ctaStyle: "arrow",
-        cornerRadius: "3xl",
-        ctaText: "Shop Collection"
-      },
-      {
-        id: "default-pickles",
-        name: "Traditional Pickles",
-        slug: "pickles",
-        description: "Homemade sun-matured seasonal pickles",
-        image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780221361/ChatGPT_Image_May_31_2026_03_25_47_PM_ybaomj.png",
-        mobileImage: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780221361/ChatGPT_Image_May_31_2026_03_25_47_PM_ybaomj.png",
-        overlayPosition: "bottom-left",
-        overlayDarkness: 0.5,
-        textColorTheme: "light",
-        isFeatured: true,
-        imageFocalPoint: "center",
-        hoverZoom: true,
-        ctaStyle: "arrow",
-        cornerRadius: "3xl",
-        ctaText: "Shop Collection"
-      },
-      {
-        id: "default-spices",
-        name: "Stone Ground Spices",
-        slug: "spices",
-        description: "Pure native farm-grown raw spices",
-        image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780212274/ChatGPT_Image_May_31_2026_12_54_22_PM_wx85ub.png",
-        mobileImage: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780212274/ChatGPT_Image_May_31_2026_12_54_22_PM_wx85ub.png",
-        overlayPosition: "bottom-left",
-        overlayDarkness: 0.5,
-        textColorTheme: "light",
-        isFeatured: false,
-        imageFocalPoint: "center",
-        hoverZoom: true,
-        ctaStyle: "arrow",
-        cornerRadius: "3xl",
-        ctaText: "Shop Collection"
-      },
-      {
-        id: "default-pulses",
-        name: "Pulses",
-        slug: "pulses",
-        description: "Naturally grown unpolished high-protein dals",
-        image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780212045/ChatGPT_Image_May_31_2026_12_50_35_PM_yoe8jf.png",
-        mobileImage: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780212045/ChatGPT_Image_May_31_2026_12_50_35_PM_yoe8jf.png",
-        overlayPosition: "bottom-left",
-        overlayDarkness: 0.6,
-        textColorTheme: "light",
-        isFeatured: false,
-        imageFocalPoint: "center",
-        hoverZoom: true,
-        ctaStyle: "arrow",
-        cornerRadius: "3xl",
-        ctaText: "Shop Collection"
-      },
-      {
-        id: "default-grains",
-        name: "Rice & Grains",
-        slug: "rice-grains",
-        description: "Heirloom organic grains",
-        image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780221260/ChatGPT_Image_May_31_2026_03_23_58_PM_pq6qnn.png",
-        mobileImage: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780221260/ChatGPT_Image_May_31_2026_03_23_58_PM_pq6qnn.png",
-        overlayPosition: "bottom-left",
-        overlayDarkness: 0.5,
-        textColorTheme: "light",
-        isFeatured: false,
-        imageFocalPoint: "center",
-        hoverZoom: true,
-        ctaStyle: "arrow",
-        cornerRadius: "3xl",
-        ctaText: "Shop Collection"
-      }
-    ];
-
-    const categoriesToShow = dynamicCats.length > 0 ? dynamicCats.map(c => {
-      let meta = {
-        subtitle: c.badge || '',
-        mobileImage: '',
-        overlayPosition: 'bottom-left',
-        overlayDarkness: 0.5,
-        textColorTheme: 'light',
-        isFeatured: false,
-        imageFocalPoint: 'center',
-        hoverZoom: true,
-        ctaStyle: 'arrow',
-        cornerRadius: '3xl'
-      };
-      if (c.description && c.description.startsWith('{')) {
-        try {
-          const parsed = JSON.parse(c.description);
-          meta = { ...meta, ...parsed };
-        } catch (e) {}
-      } else if (c.description) {
-        meta.subtitle = c.description;
-      }
-      return {
-        id: c.id,
-        name: c.title,
-        slug: c.categorySlug,
-        description: meta.subtitle,
-        image: c.image,
-        mobileImage: meta.mobileImage || c.image,
-        overlayPosition: meta.overlayPosition,
-        overlayDarkness: meta.overlayDarkness,
-        textColorTheme: meta.textColorTheme,
-        isFeatured: meta.isFeatured,
-        imageFocalPoint: meta.imageFocalPoint,
-        hoverZoom: meta.hoverZoom,
-        ctaStyle: meta.ctaStyle,
-        cornerRadius: meta.cornerRadius,
-        ctaText: c.ctaText || 'Browse Collection',
-        sortOrder: c.sortOrder
-      };
-    }).sort((a, b) => a.sortOrder - b.sortOrder) : defaultCategories;
-
-    console.log("categoriesToShow:", categoriesToShow);
+    // Derive categoriesToShow directly from homepageCategories state (the single database source of truth)
+    const categoriesToShow = homepageCategories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      image: c.image,
+      productCount: c._count?.products || 0
+    }));
 
     const containerVariants = {
       hidden: { opacity: 0 },
       visible: {
         opacity: 1,
         transition: {
-          staggerChildren: 0.1,
+          staggerChildren: 0.08,
           delayChildren: 0.1
         }
       }
@@ -526,57 +392,15 @@ export default function Home() {
     const itemVariants = {
       hidden: { 
         opacity: 0, 
-        y: 30,
-        pointerEvents: "none",
-        visibility: "hidden"
+        y: 20
       },
       visible: {
         opacity: 1,
         y: 0,
-        pointerEvents: "auto",
-        visibility: "visible",
         transition: {
-          duration: 0.6,
+          duration: 0.5,
           ease: [0.215, 0.61, 0.355, 1]
         }
-      }
-    };
-
-    // Helper for overlay position classes
-    const getPositionClasses = (pos) => {
-      switch (pos) {
-        case 'center': return 'justify-center items-center text-center p-6 md:p-10';
-        case 'top-left': return 'justify-start items-start text-left p-6 md:p-10';
-        case 'top-right': return 'justify-start items-end text-right p-6 md:p-10';
-        case 'bottom-right': return 'justify-end items-end text-right p-6 md:p-10';
-        case 'bottom-left':
-        default: return 'justify-end items-start text-left p-6 md:p-8';
-      }
-    };
-
-    // Helper for corner radius classes
-    const getRadiusClasses = (radius) => {
-      switch (radius) {
-        case 'none': return 'rounded-none';
-        case 'md': return 'rounded-md';
-        case 'lg': return 'rounded-lg';
-        case 'xl': return 'rounded-xl';
-        case '2xl': return 'rounded-2xl';
-        case 'full': return 'rounded-[32px] md:rounded-[48px]';
-        case '3xl':
-        default: return 'rounded-[24px] md:rounded-[32px]';
-      }
-    };
-
-    // Helper for image focal point classes
-    const getFocalClasses = (focal) => {
-      switch (focal) {
-        case 'top': return 'object-top';
-        case 'bottom': return 'object-bottom';
-        case 'left': return 'object-left';
-        case 'right': return 'object-right';
-        case 'center':
-        default: return 'object-center';
       }
     };
 
@@ -601,13 +425,11 @@ export default function Home() {
 
           {/* Cards Grid */}
           {isLoadingCategoryData ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-8 pointer-events-none">
-              {[...Array(6)].map((_, i) => (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 pointer-events-none">
+              {[...Array(8)].map((_, i) => (
                 <div 
                   key={`skeleton-${i}`} 
-                  className={`bg-stone-200/60 animate-pulse h-48 md:h-80 rounded-[24px] md:rounded-[32px] pointer-events-none ${
-                    i === 0 || i === 2 ? "col-span-2 md:col-span-2" : "col-span-1"
-                  }`} 
+                  className="bg-stone-200/60 animate-pulse h-64 sm:h-80 rounded-[24px] pointer-events-none" 
                 />
               ))}
             </div>
@@ -618,118 +440,58 @@ export default function Home() {
                 initial="hidden"
                 whileInView="visible"
                 viewport={{ once: true, margin: "-50px" }}
-                className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-8"
+                className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8"
               >
                 {categoriesToShow.map((cat) => {
                   if (!cat || !cat.slug || !cat.name) return null;
 
-                  // Safe guard check if image is missing
-                  const isImageMissing = !cat.image;
-
-                  const radiusClass = getRadiusClasses(cat.cornerRadius);
-                  const positionClass = getPositionClasses(cat.overlayPosition);
-                  const focalClass = getFocalClasses(cat.imageFocalPoint);
-                  const zoomClass = cat.hoverZoom ? 'group-hover:scale-105' : '';
-                  
-                  const isTextDark = cat.textColorTheme === 'dark';
-                  const textTitleColor = isTextDark ? 'text-[#2F3B0C]' : 'text-white';
-                  const textDescColor = isTextDark ? 'text-[#37411A]/80' : 'text-white/85';
-                  
-                  const darkness = cat.overlayDarkness !== undefined ? parseFloat(cat.overlayDarkness) : 0.5;
-                  const overlayBg = isTextDark 
-                    ? `linear-gradient(to top, rgba(253,251,247,${darkness}) 0%, rgba(253,251,247,${darkness * 0.4}) 60%, transparent 100%)`
-                    : `linear-gradient(to top, rgba(0,0,0,${darkness}) 0%, rgba(0,0,0,${darkness * 0.4}) 60%, transparent 100%)`;
-
-                  // Support featured layouts
-                  const cardGridSpan = cat.isFeatured 
-                    ? "col-span-2 md:col-span-2 h-48 md:h-80" 
-                    : "col-span-1 h-48 md:h-80";
-
-                  if (isImageMissing) {
-                    // Render fallback placeholder only (no navigation links, not clickable)
-                    return (
-                      <div 
-                        key={cat.id || cat.slug}
-                        className={`relative overflow-hidden bg-stone-100 border border-stone-200 p-6 flex flex-col justify-center items-center text-center ${cardGridSpan} ${radiusClass} pointer-events-none`}
-                      >
-                        <span className="text-2xl mb-2">🌾</span>
-                        <h3 className="font-serif text-sm md:text-lg font-bold text-[#2F3B0C]">
-                          {cat.name}
-                        </h3>
-                        {cat.description && (
-                          <p className="text-[10px] text-stone-500 max-w-[80%] line-clamp-2 mt-1">
-                            {cat.description}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  }
+                  const optimizedImageUrl = getOptimizedImageUrl(cat.image, { width: 400, height: 300, cropMode: 'fill' });
 
                   return (
                     <motion.div 
                       key={cat.id || cat.slug} 
                       variants={itemVariants}
-                      className={`relative overflow-hidden group cursor-pointer shadow-md hover:shadow-[0_20px_40px_rgba(78,100,26,0.12)] transform hover:-translate-y-1.5 transition-all duration-500 bg-stone-100 ${cardGridSpan} ${radiusClass}`}
-                      onClick={() => navigate(`/products?category=${cat.slug}`)}
+                      className="group bg-white border border-[#EAE4D8] rounded-[24px] overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between h-full cursor-pointer relative w-full text-left"
+                      onClick={() => navigate(`/category/${cat.slug}`)}
                     >
-                      {/* Desktop Background Image */}
-                      <img 
-                        src={cat.image} 
-                        alt={cat.name} 
-                        loading="lazy"
-                        className={`absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out hidden md:block ${zoomClass} ${focalClass}`}
-                      />
-
-                      {/* Mobile Background Image */}
-                      <img 
-                        src={cat.mobileImage || cat.image} 
-                        alt={cat.name} 
-                        loading="lazy"
-                        className={`absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out block md:hidden ${zoomClass} ${focalClass}`}
-                      />
-
-                      {/* Custom Gradient Overlay for Readability */}
-                      <div className="absolute inset-0 z-10 pointer-events-none" style={{ background: overlayBg }} />
-
-                      {/* Card Content */}
-                      <div className={`absolute inset-0 z-20 flex flex-col ${positionClass}`}>
-                        <div className="space-y-1 pr-6 md:pr-12">
-                          <h3 className={`font-serif text-sm md:text-2xl font-bold tracking-wide leading-tight ${textTitleColor}`}>
-                            {cat.name}
-                          </h3>
-                          {cat.description && (
-                            <p className={`hidden md:block text-xs leading-relaxed font-medium line-clamp-2 ${textDescColor}`}>
-                              {cat.description}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Navigation Arrow / Custom CTA button micro-interaction */}
-                        {cat.ctaStyle === 'arrow' ? (
-                          <div className={`absolute bottom-4 right-4 md:bottom-8 md:right-8 backdrop-blur-md w-8 h-8 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all duration-300 ${
-                            isTextDark 
-                              ? 'bg-[#4E641A]/10 hover:bg-[#4E641A]/20 text-[#4E641A]' 
-                              : 'bg-white/20 hover:bg-white/30 text-white'
-                          }`}>
-                            <FiArrowRight className="w-4 h-4 md:w-5 md:h-5 transition-transform duration-300 transform group-hover:translate-x-1" />
-                          </div>
-                        ) : cat.ctaStyle === 'button-outline' ? (
-                          <div className={`mt-3 md:mt-4 text-[9px] md:text-xs font-bold uppercase tracking-wider px-3 py-1.5 border rounded-lg transition-all duration-300 select-none ${
-                            isTextDark 
-                              ? 'border-[#4E641A] text-[#4E641A] hover:bg-[#4E641A] hover:text-white' 
-                              : 'border-white text-white hover:bg-white hover:text-[#37411A]'
-                          }`}>
-                            {cat.ctaText || 'Explore'}
-                          </div>
+                      {/* Category Thumbnail Image with fixed 4:3 aspect ratio */}
+                      <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#F8F5F0] border-b border-[#EAE4D8]/40 shrink-0">
+                        {cat.image ? (
+                          <img 
+                            src={optimizedImageUrl} 
+                            alt={cat.name} 
+                            width={400}
+                            height={300}
+                            loading="lazy"
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          />
                         ) : (
-                          <div className={`mt-3 md:mt-4 text-[9px] md:text-xs font-bold uppercase tracking-wider px-4 py-1.5 rounded-lg transition-all duration-300 select-none shadow-xxs border-none ${
-                            isTextDark 
-                              ? 'bg-[#4E641A] text-white hover:bg-[#37411A]' 
-                              : 'bg-white text-[#37411A] hover:bg-stone-50'
-                          }`}>
-                            {cat.ctaText || 'Explore'}
+                          <div className="w-full h-full bg-gradient-to-br from-[#EDE7D9]/80 to-[#FDFBF7] flex items-center justify-center font-serif text-stone-400">
+                            No Image
                           </div>
                         )}
+                      </div>
+
+                      {/* Card Content - Aligned below the image */}
+                      <div className="p-4 flex flex-col justify-between flex-grow gap-3">
+                        <div className="space-y-0.5">
+                          <h3 className="font-serif text-sm sm:text-base md:text-lg font-bold text-[#2F3B0C] group-hover:text-[#4E641A] transition-colors leading-tight line-clamp-1">
+                            {cat.name}
+                          </h3>
+                          <span className="font-sans text-[10px] sm:text-xs font-semibold text-stone-400 block">
+                            {cat.productCount} {cat.productCount === 1 ? 'Staple' : 'Staples'}
+                          </span>
+                        </div>
+
+                        {/* CTA Row - Identical position across all cards */}
+                        <div className="pt-2 border-t border-stone-100 flex items-center justify-between mt-auto">
+                          <span className="font-sans text-[9px] sm:text-xs font-bold text-[#4E641A] group-hover:text-[#2F3B0C] uppercase tracking-widest transition-colors">
+                            Explore
+                          </span>
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-[#4E641A]/10 text-[#4E641A] group-hover:bg-[#4E641A] group-hover:text-white flex items-center justify-center transition-all duration-300">
+                            <FiArrowRight className="w-3 h-3 sm:w-4 sm:h-4 group-hover:translate-x-0.5 transition-transform" />
+                          </div>
+                        </div>
                       </div>
                     </motion.div>
                   );
@@ -1355,6 +1117,9 @@ export default function Home() {
             // Normalize overlay gradients to fade top (transparent) to bottom (dark gradient zone)
             const overlayBg = `linear-gradient(to top, rgba(0,0,0,${darkness + 0.35}) 0%, rgba(0,0,0,${darkness}) 45%, rgba(0,0,0,0.1) 75%, transparent 100%)`;
 
+            const desktopCollUrl = getOptimizedImageUrl(coll.image, { width: 600, height: 420, cropMode: 'fill' });
+            const mobileCollUrl = getOptimizedImageUrl(meta.mobileImage || coll.image, { width: 350, height: 380, cropMode: 'fill' });
+
             return (
               <div 
                 key={coll.id} 
@@ -1369,16 +1134,20 @@ export default function Home() {
               >
                 {/* Desktop Background Image with subtle zoom */}
                 <img 
-                  src={coll.image} 
+                  src={desktopCollUrl} 
                   alt={coll.title} 
+                  width={600}
+                  height={420}
                   loading="lazy"
                   className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105 opacity-85 group-hover:opacity-80 hidden md:block"
                 />
                 
                 {/* Mobile Background Image with subtle zoom */}
                 <img 
-                  src={meta.mobileImage || coll.image} 
+                  src={mobileCollUrl} 
                   alt={coll.title} 
+                  width={350}
+                  height={380}
                   loading="lazy"
                   className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105 opacity-85 group-hover:opacity-80 block md:hidden"
                 />
@@ -1540,7 +1309,14 @@ export default function Home() {
                 <div className="flex items-center space-x-3.5 pt-4 border-t border-stone-100 shrink-0">
                   <div className="w-10 h-10 rounded-full bg-[#4E641A]/10 border border-[#EAE4D8] flex items-center justify-center font-bold text-[#4E641A] font-serif shrink-0 overflow-hidden">
                     {review.customerPhoto && (review.customerPhoto.startsWith('http') || review.customerPhoto.includes('/')) ? (
-                      <img src={review.customerPhoto} alt={review.customerName} className="w-full h-full object-cover" />
+                      <img 
+                        src={getOptimizedImageUrl(review.customerPhoto, { width: 40, height: 40, cropMode: 'fill' })} 
+                        alt={review.customerName} 
+                        width={40}
+                        height={40}
+                        loading="lazy"
+                        className="w-full h-full object-cover" 
+                      />
                     ) : (
                       review.customerPhoto || (review.customerName ? review.customerName.charAt(0) : 'C')
                     )}
@@ -1571,8 +1347,10 @@ export default function Home() {
           className="relative rounded-[32px] sm:rounded-[40px] overflow-hidden shadow-[0_24px_50px_-15px_rgba(47,59,12,0.3)] border border-[#EAE4D8]/15 bg-stone-900 group"
         >
           <img
-            src="https://images.unsplash.com/photo-1599933310633-6f17f41f71df?auto=format&fit=crop&q=80&w=1600"
+            src={getOptimizedImageUrl("https://images.unsplash.com/photo-1599933310633-6f17f41f71df", { width: 1200, height: 600, cropMode: 'fill' })}
             alt="Indian Harvest"
+            width={1200}
+            height={600}
             loading="lazy"
             className="absolute inset-0 w-full h-full object-cover filter brightness-[0.45] scale-100 group-hover:scale-105 transition-transform duration-[2.5s] ease-out"
           />
@@ -1632,29 +1410,37 @@ export default function Home() {
     }
   };
 
+  const onRenderCallback = (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
+    if (import.meta.env.DEV) {
+      console.log(`[Profiler] ${id} - Phase: ${phase} - Actual Duration: ${actualDuration.toFixed(2)}ms`);
+    }
+  };
+
   return (
-    <div className="flex flex-col bg-[#F9F6F0] overflow-hidden w-full relative pt-20">
-      
-      {/* FLOATING SUCCESS TOAST MICRO-ANIMATION */}
-      <AnimatePresence>
-        {toast.show && (
-          <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            className="fixed bottom-8 right-8 z-50 bg-[#2F3B0C] border border-[#C68A2B]/40 text-white font-sans text-xs font-semibold px-6 py-4 rounded-2xl shadow-2xl flex items-center space-x-3"
-          >
-            <GiSprout className="text-sunrise-gold text-lg animate-bounce" />
-            <span>{toast.message}</span>
-            <button onClick={() => setToast({ show: false, message: '' })} className="text-stone-400 hover:text-white pl-2">
-              <FiX />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <Profiler id="Homepage" onRender={onRenderCallback}>
+      <div className="flex flex-col bg-[#F9F6F0] overflow-hidden w-full relative pt-20">
+        
+        {/* FLOATING SUCCESS TOAST MICRO-ANIMATION */}
+        <AnimatePresence>
+          {toast.show && (
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.9 }}
+              className="fixed bottom-8 right-8 z-50 bg-[#2F3B0C] border border-[#C68A2B]/40 text-white font-sans text-xs font-semibold px-6 py-4 rounded-2xl shadow-2xl flex items-center space-x-3"
+            >
+              <GiSprout className="text-sunrise-gold text-lg animate-bounce" />
+              <span>{toast.message}</span>
+              <button onClick={() => setToast({ show: false, message: '' })} className="text-stone-400 hover:text-white pl-2">
+                <FiX />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-      {sectionsSequence.map(sectName => renderSection(sectName))}
+        {sectionsSequence.map(sectName => renderSection(sectName))}
 
-    </div>
+      </div>
+    </Profiler>
   );
 }

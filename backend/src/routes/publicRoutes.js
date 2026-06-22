@@ -270,7 +270,13 @@ router.get('/homepage', async (req, res, next) => {
 
     // 3. Fetch active homepage categories sorted by position
     const categories = await prisma.category.findMany({
-      where: { promoVisible: true, isVisible: true },
+      where: { 
+        isVisible: true,
+        slug: { not: 'uncategorized' }
+      },
+      include: {
+        _count: { select: { products: true } }
+      },
       orderBy: { position: 'asc' }
     });
 
