@@ -1,9 +1,10 @@
 import axios from 'axios';
 
-const rawApiUrl = import.meta.env.VITE_API_URL || '';
-const baseURL = rawApiUrl 
-  ? (rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`) 
-  : '/api';
+const API_BASE_URL = import.meta.env.PROD
+  ? "https://suryodayafarms.onrender.com"
+  : (import.meta.env.VITE_API_URL || "http://localhost:5000");
+
+const baseURL = API_BASE_URL.endsWith('/api') ? API_BASE_URL : `${API_BASE_URL}/api`;
 
 // Initialize configured Axios instance
 const api = axios.create({
