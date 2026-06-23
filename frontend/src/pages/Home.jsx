@@ -32,6 +32,143 @@ const getCloudinaryCroppedUrl = (url, crop, options = {}) => {
   return getOptimizedImageUrl(url, { ...options, crop });
 };
 
+export function HeroSkeleton() {
+  return (
+    <div className="w-full bg-gradient-to-b from-[#F9F6F0] via-[#F6F3ED] to-[#EAE4D8]/20 py-12 md:py-24 px-6 md:px-12 animate-pulse border-b border-[#EAE4D8]">
+      <div className="max-w-7xl mx-auto grid grid-cols-12 gap-8 items-center">
+        <div className="col-span-12 lg:col-span-7 space-y-6">
+          <div className="h-6 w-48 bg-stone-200 rounded-full" />
+          <div className="h-12 w-3/4 bg-stone-300 rounded-xl" />
+          <div className="h-12 w-1/2 bg-stone-300 rounded-xl" />
+          <div className="h-20 w-5/6 bg-stone-200 rounded-xl" />
+          <div className="flex gap-4">
+            <div className="h-12 w-36 bg-stone-300 rounded-xl" />
+            <div className="h-12 w-44 bg-stone-200 rounded-xl" />
+          </div>
+        </div>
+        <div className="col-span-12 lg:col-span-5 flex justify-center">
+          <div className="w-full h-80 bg-stone-300 rounded-[36px]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function CategoriesSkeleton() {
+  return (
+    <div className="bg-gradient-to-b from-[#FDFBF7] via-[#FDFBF7] to-[#F5F2EA] py-16 md:py-24 animate-pulse border-b border-[#EAE4D8]/80">
+      <div className="max-w-7xl mx-auto px-4 md:px-12">
+        <div className="text-center max-w-xl mx-auto space-y-4 mb-16">
+          <div className="h-5 w-32 bg-stone-200 rounded-full mx-auto" />
+          <div className="h-10 w-64 bg-stone-300 rounded-xl mx-auto" />
+          <div className="h-4 w-80 bg-stone-200 rounded-lg mx-auto" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white border border-[#EAE4D8] rounded-[24px] p-4 h-72 flex flex-col justify-between">
+              <div className="aspect-[4/3] w-full bg-stone-200 rounded-xl" />
+              <div className="space-y-2 mt-4">
+                <div className="h-4 w-3/4 bg-stone-300 rounded" />
+                <div className="h-3 w-1/2 bg-stone-200 rounded" />
+              </div>
+              <div className="h-8 w-full bg-stone-200 rounded-xl mt-4" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ProductSkeleton() {
+  return (
+    <div className="bg-white border border-[#EAE4D8] rounded-[24px] p-4 space-y-4 animate-pulse">
+      <div className="aspect-square w-full bg-stone-200 rounded-xl" />
+      <div className="space-y-2">
+        <div className="h-3 w-1/4 bg-stone-200 rounded" />
+        <div className="h-5 w-3/4 bg-stone-300 rounded" />
+        <div className="h-4 w-1/2 bg-stone-200 rounded" />
+      </div>
+      <div className="flex justify-between items-center pt-2">
+        <div className="h-6 w-16 bg-stone-300 rounded" />
+        <div className="h-8 w-24 bg-stone-300 rounded-lg" />
+      </div>
+    </div>
+  );
+}
+
+export function CollectionsSkeleton() {
+  return (
+    <div className="py-20 px-6 max-w-7xl mx-auto animate-pulse border-b border-[#EAE4D8]">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+        <div className="space-y-3">
+          <div className="h-4 w-36 bg-stone-200 rounded" />
+          <div className="h-10 w-72 bg-stone-300 rounded-xl" />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {[...Array(2)].map((_, i) => (
+          <div key={i} className="h-[420px] bg-stone-200 rounded-[32px]" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function TestimonialsSkeleton() {
+  return (
+    <div className="py-20 px-6 bg-[#F3EFE6]/40 animate-pulse border-b border-[#EAE4D8]">
+      <div className="max-w-7xl mx-auto space-y-12">
+        <div className="text-center max-w-xl mx-auto space-y-4">
+          <div className="h-4 w-36 bg-stone-200 rounded mx-auto" />
+          <div className="h-10 w-72 bg-stone-300 rounded-xl mx-auto" />
+          <div className="h-4 w-80 bg-stone-200 rounded mx-auto" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-white border border-stone-200 rounded-[28px] p-8 h-64 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="h-4 w-24 bg-stone-200 rounded" />
+                <div className="h-16 w-full bg-stone-200 rounded-lg" />
+              </div>
+              <div className="flex items-center space-x-4">
+                <div className="w-10 h-10 rounded-full bg-stone-300" />
+                <div className="space-y-2">
+                  <div className="h-3 w-20 bg-stone-300 rounded" />
+                  <div className="h-2.5 w-24 bg-stone-200 rounded" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function HomepageSkeleton() {
+  return (
+    <div className="flex flex-col bg-[#F9F6F0] overflow-hidden w-full pt-20">
+      <HeroSkeleton />
+      <CategoriesSkeleton />
+      <div className="py-20 px-6 max-w-7xl mx-auto w-full">
+        <div className="text-center max-w-xl mx-auto space-y-4 mb-16">
+          <div className="h-5 w-32 bg-stone-200 rounded-full mx-auto" />
+          <div className="h-10 w-64 bg-stone-300 rounded-xl mx-auto" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[...Array(3)].map((_, i) => (
+            <ProductSkeleton key={i} />
+          ))}
+        </div>
+      </div>
+      <CollectionsSkeleton />
+      <TestimonialsSkeleton />
+    </div>
+  );
+}
+
+
 export default function Home() {
   const navigate = useNavigate();
   
@@ -53,8 +190,12 @@ export default function Home() {
   const [testimonialsList, setTestimonialsList] = useState(homepageCache?.testimonialsList || []);
 
   const [isLoading, setIsLoading] = useState(!homepageCache);
-  const [isConfigLoaded, setIsConfigLoaded] = useState(!!homepageCache);
+  const [homepageConfigLoaded, setHomepageConfigLoaded] = useState(!!homepageCache);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(!!homepageCache);
+  const [apiError, setApiError] = useState(false);
+  const settingsLoaded = useSettingsStore((state) => state.settingsLoaded);
   const [hasHydrated, setHasHydrated] = useState(false);
+
   const [toast, setToast] = useState({ show: false, message: '' });
   const [activeCategory, setActiveCategory] = useState({ id: 'All', name: 'All' });
   const [activeBenefit, setActiveBenefit] = useState('All');
@@ -120,40 +261,30 @@ export default function Home() {
     // If not cached, set loading state to true
     if (!homepageCache) {
       setIsLoading(true);
-      setIsConfigLoaded(false);
+      setHomepageConfigLoaded(false);
+      setCategoriesLoaded(false);
+      setApiError(false);
     }
 
     try {
       // Define the promises with catch handlers for error resilience
-      const productsPromise = api.get('/products')
-        .catch(err => {
-          console.error("Database fetch products failed:", err);
-          return { products: [] };
-        });
-
-      const cmsPromise = api.get('/public/homepage')
-        .catch(err => {
-          console.error("Failed to fetch dynamic homepage configuration:", err);
-          return { success: false };
-        });
-
-      const categoriesPromise = api.get('/products/categories')
-        .catch(err => {
-          console.error("Failed to fetch categories catalog:", err);
-          return { categories: [] };
-        });
-
-      const settingsPromise = useSettingsStore.getState().fetchSettings()
-        .catch(err => {
-          console.error("Failed to fetch settings:", err);
-        });
+      const productsPromise = api.get('/products');
+      const cmsPromise = api.get('/public/homepage');
+      const categoriesPromise = api.get('/products/categories');
+      const settingsPromise = useSettingsStore.getState().fetchSettings();
 
       const cartPromise = isAuthenticated
-        ? useCartStore.getState().fetchCart().catch(err => console.error("Failed to fetch cart:", err))
+        ? useCartStore.getState().fetchCart().catch(err => {
+            console.error("Failed to fetch cart:", err);
+            return null;
+          })
         : Promise.resolve();
 
       const wishlistPromise = isAuthenticated
-        ? useWishlistStore.getState().fetchWishlist().catch(err => console.error("Failed to fetch wishlist:", err))
+        ? useWishlistStore.getState().fetchWishlist().catch(err => {
+            console.error("Failed to fetch wishlist:", err);
+            return null;
+          })
         : Promise.resolve();
 
       const testimonialsPromise = api.get('/public/testimonials')
@@ -172,6 +303,19 @@ export default function Home() {
         wishlistPromise,
         testimonialsPromise
       ]);
+
+      if (!cmsRes || !cmsRes.success) {
+        throw new Error("Failed to load homepage configuration");
+      }
+      if (!categoriesRes || !categoriesRes.categories) {
+        throw new Error("Failed to load categories catalog");
+      }
+      if (!useSettingsStore.getState().settingsLoaded) {
+        throw new Error("Failed to load settings");
+      }
+      if (!productsRes || !productsRes.products) {
+        throw new Error("Failed to load products");
+      }
 
       // 1. Process Products
       let mappedProducts = [];
@@ -230,7 +374,13 @@ export default function Home() {
         if (cmsRes.categories) {
           freshCategories = cmsRes.categories.filter(
             c => c.slug?.toLowerCase() !== 'uncategorized' && c.name?.toLowerCase() !== 'uncategorized'
-          );
+          ).map(c => {
+            const matched = categoriesRes.categories?.find(cat => cat.id === c.id || cat.slug === c.slug);
+            return {
+              ...c,
+              _count: matched?._count || c._count || { products: 0 }
+            };
+          });
         }
         if (cmsRes.collections && cmsRes.collections.length > 0) freshCollections = cmsRes.collections;
         if (cmsRes.sectionOrder) {
@@ -277,12 +427,14 @@ export default function Home() {
         testimonialsList: freshTestimonials
       };
 
+      setHomepageConfigLoaded(true);
+      setCategoriesLoaded(true);
+
     } catch (e) {
       console.error("Critical error in parallel homepage data loading:", e);
+      setApiError(true);
     } finally {
-      // Skeletons disappear immediately when data finishes loading
       setIsLoading(false);
-      setIsConfigLoaded(true);
     }
   };
 
@@ -342,7 +494,8 @@ export default function Home() {
     const activeName = activeCategory?.name || activeCategory;
 
     if (activeId === 'All' || activeName === 'All') {
-      return p.isBestseller;
+      const hasBestsellers = productsList.some(prod => prod.isBestseller);
+      return hasBestsellers ? p.isBestseller : true;
     }
     // Show all products under selected category immediately (Requirement 9)
     return p.categories?.some(cat => cat.id === activeId || cat.name === activeName || cat.slug === activeId) || p.categoryId === activeId;
@@ -374,7 +527,7 @@ export default function Home() {
 
   const renderCategoriesSection = () => {
     // Calculate if categories are loading or waiting for hydration
-    const isLoadingCategoryData = !hasHydrated || !isConfigLoaded;
+    const isLoadingCategoryData = !hasHydrated || !categoriesLoaded || isLoading;
 
     // Derive categoriesToShow directly from homepageCategories state (the single database source of truth)
     const categoriesToShow = homepageCategories.map((c) => ({
@@ -384,6 +537,14 @@ export default function Home() {
       image: c.image,
       productCount: c._count?.products || 0
     }));
+
+    if (categoriesToShow.length === 0) {
+      if (isLoadingCategoryData) {
+        return <CategoriesSkeleton />;
+      }
+      return null;
+    }
+
 
     const containerVariants = {
       hidden: { opacity: 0 },
@@ -514,47 +675,54 @@ export default function Home() {
   const renderHeroSection = () => {
     const currentHero = heroesList[currentSlideIndex] || activeHero;
     const hasHero = !!currentHero;
-    const title = hasHero ? currentHero.headingLine1 : 'Pristine Vedic Staples';
-    const highlight = hasHero ? currentHero.headingHighlight : 'Hand-Extracted';
-    const titleLine2 = hasHero ? currentHero.headingLine2 : '';
-    const description = hasHero ? currentHero.description : 'We preserve heirloom seeds, practice strictly chemical-free cultivation in Wardha, and slowly process harvests under 35°C to preserve deep mineral enzymes, natural flavor, and life force.';
-    const primaryButtonText = hasHero ? currentHero.primaryButtonText : 'Shop Now';
-    const primaryButtonLink = hasHero ? currentHero.primaryButtonLink : '/';
-    const secondaryButtonText = hasHero ? currentHero.secondaryButtonText : 'Explore Collections';
-    const secondaryButtonLink = hasHero ? currentHero.secondaryButtonLink : '/';
-    const badgeText = hasHero ? currentHero.trustBadgeText : 'Loved by 12,000+ Indian Families (4.9★)';
-    const promoCodeText = hasHero ? currentHero.promoText : 'Use Code: SURYODAYA10 to get 10% Extra Soil Credits';
+
+    if (!hasHero) {
+      if (isLoading) {
+        return <HeroSkeleton />;
+      }
+      return null;
+    }
+
+    const title = currentHero.headingLine1 || '';
+    const highlight = currentHero.headingHighlight || '';
+    const titleLine2 = currentHero.headingLine2 || '';
+    const description = currentHero.description || '';
+    const primaryButtonText = currentHero.primaryButtonText || 'Shop Now';
+    const primaryButtonLink = currentHero.primaryButtonLink || '/';
+    const secondaryButtonText = currentHero.secondaryButtonText || 'Explore Collections';
+    const secondaryButtonLink = currentHero.secondaryButtonLink || '/';
+    const badgeText = currentHero.trustBadgeText || '';
+    const promoCodeText = currentHero.promoText || '';
 
     // Bullets list
-    const bulletOne = hasHero ? currentHero.bulletOne : 'Chemical-Free Soil';
-    const bulletTwo = hasHero ? currentHero.bulletTwo : 'Vedic Bilona Churned';
-    const bulletThree = hasHero ? currentHero.bulletThree : 'Wood Pressed Ghanis';
-    const bulletFour = hasHero ? currentHero.bulletFour : 'No Added Preservatives';
+    const bulletOne = currentHero.bulletOne || '';
+    const bulletTwo = currentHero.bulletTwo || '';
+    const bulletThree = currentHero.bulletThree || '';
+    const bulletFour = currentHero.bulletFour || '';
 
     // Featured Product Reference
-    const featuredProduct = (currentHero && currentHero.featuredProduct) || productsList.find(p => p.isFeatured) || null;
+    const featuredProduct = currentHero.featuredProduct || productsList.find(p => p.isFeatured) || null;
     const hasFeaturedProduct = !!featuredProduct;
 
-    const featuredProductName = hasFeaturedProduct ? featuredProduct.name : 'A2 Gir Cow Desi Ghee (Bilona Method)';
-    const featuredProductPrice = hasFeaturedProduct ? featuredProduct.price : 950;
-    const featuredProductOriginalPrice = hasFeaturedProduct ? featuredProduct.compareAtPrice || featuredProduct.originalPrice || featuredProduct.mrp || 1100 : 1100;
+    const featuredProductName = hasFeaturedProduct ? featuredProduct.name : '';
+    const featuredProductPrice = hasFeaturedProduct ? featuredProduct.price : 0;
+    const featuredProductOriginalPrice = hasFeaturedProduct ? (featuredProduct.compareAtPrice || featuredProduct.originalPrice || featuredProduct.mrp || 0) : 0;
     const featuredProductImage = hasFeaturedProduct 
       ? (featuredProduct.images?.length > 0 ? featuredProduct.images[0].url : featuredProduct.image) 
       : null;
 
-    // Use currentHero.heroImage as primary, fallback to featured product image, then default Unsplash image
-    const heroImage = (hasHero && currentHero.heroImage) 
-      ? currentHero.heroImage 
-      : (featuredProductImage || 'https://images.unsplash.com/photo-1588166524941-3bf61a9c41db?auto=format&fit=crop&q=80&w=800');
+    // Use currentHero.heroImage as primary, fallback to featured product image
+    const heroImage = currentHero.heroImage || featuredProductImage || '';
 
-    const desktopHeroImageUrl = getCloudinaryCroppedUrl(heroImage, currentHero, { width: 500, height: 333, cropMode: 'fill' });
-    const tabletHeroImageUrl = getCloudinaryCroppedUrl(heroImage, currentHero, { width: 400, height: 266, cropMode: 'fill' });
-    const mobileHeroImageUrl = getCloudinaryCroppedUrl(heroImage, currentHero, { width: 300, height: 165, cropMode: 'fill' });
+    const desktopHeroImageUrl = heroImage ? getCloudinaryCroppedUrl(heroImage, currentHero, { width: 500, height: 333, cropMode: 'fill' }) : '';
+    const tabletHeroImageUrl = heroImage ? getCloudinaryCroppedUrl(heroImage, currentHero, { width: 400, height: 266, cropMode: 'fill' }) : '';
+    const mobileHeroImageUrl = heroImage ? getCloudinaryCroppedUrl(heroImage, currentHero, { width: 300, height: 165, cropMode: 'fill' }) : '';
 
     // Right card badges
-    const offerBadgeText = hasHero ? currentHero.offerBadgeText : '15% OFF';
-    const floatingBadgeTitle = hasHero ? currentHero.floatingBadgeTitle : '100% Heirloom';
-    const floatingBadgeSubtitle = hasHero ? currentHero.floatingBadgeSubtitle : 'Non-Hybrid seeds';
+    const offerBadgeText = currentHero.offerBadgeText || '';
+    const floatingBadgeTitle = currentHero.floatingBadgeTitle || '';
+    const floatingBadgeSubtitle = currentHero.floatingBadgeSubtitle || '';
+
 
     const handleFeaturedProductAction = () => {
       if (hasFeaturedProduct) {
@@ -779,55 +947,65 @@ export default function Home() {
                 animate="visible"
                 className="col-span-12 lg:col-span-5 relative mt-0 flex justify-center w-full"
               >
-                <div className="relative w-full h-[120px] min-[360px]:h-[145px] min-[390px]:h-[165px] sm:h-[450px] rounded-2xl sm:rounded-[36px] overflow-hidden border border-[#EAE4D8] shadow-md sm:shadow-2xl bg-white p-1.5 sm:p-4">
-                  <div className="absolute inset-0 bg-gradient-to-tr from-[#F6F3ED] via-[#F9F6F0] to-[#EAE4D8]/20 z-0" />
-                  
-                  <picture className="w-full h-full sm:h-2/3 rounded-xl sm:rounded-[28px] overflow-hidden border border-stone-100 z-10 relative shadow block">
-                    <source media="(max-width: 640px)" srcSet={mobileHeroImageUrl} />
-                    <source media="(max-width: 1024px)" srcSet={tabletHeroImageUrl} />
-                    <img 
-                      src={desktopHeroImageUrl} 
-                      alt="Storefront Hero Staple" 
-                      loading="lazy"
-                      className="w-full h-full object-cover"
-                    />
-                  </picture>
-
-                  <div className="hidden sm:block p-4 relative z-10 space-y-2 mt-4 text-left">
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-[#C68A2B] bg-[#C68A2B]/10 px-2 py-0.5 rounded-full inline-block">
-                      {(currentHero && currentHero.isFeatured) ? '★ Featured Harvest' : 'Staple Harvest of the Month'}
-                    </span>
-                    <h3 className="font-serif text-lg font-bold text-[#2F3B0C] line-clamp-1">
-                      {featuredProductName}
-                    </h3>
-                    <div className="flex justify-between items-center pt-1">
-                      <div className="flex items-baseline space-x-2">
-                        <span className="text-base font-bold text-[#4E641A]">₹{featuredProductPrice}</span>
-                        {featuredProductOriginalPrice > featuredProductPrice && (
-                          <span className="text-xs line-through text-stone-400 font-medium">₹{featuredProductOriginalPrice}</span>
-                        )}
-                      </div>
-                      <button 
-                        onClick={handleFeaturedProductAction}
-                        disabled={hasFeaturedProduct && featuredProduct.inventory <= 0}
-                        className={`px-4 py-2 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg transition shadow-sm border-none ${
-                          hasFeaturedProduct && featuredProduct.inventory <= 0 
-                            ? 'bg-stone-300 cursor-not-allowed' 
-                            : 'bg-[#4E641A] hover:bg-[#2F3B0C] cursor-pointer'
-                        }`}
-                      >
-                        {hasFeaturedProduct && featuredProduct.inventory <= 0 ? 'Sold Out' : 'Quick Add'}
-                      </button>
-                    </div>
+                {!featuredProduct ? (
+                  <div className="w-full">
+                    <ProductSkeleton />
                   </div>
+                ) : (
+                  <div className="relative w-full h-[120px] min-[360px]:h-[145px] min-[390px]:h-[165px] sm:h-[450px] rounded-2xl sm:rounded-[36px] overflow-hidden border border-[#EAE4D8] shadow-md sm:shadow-2xl bg-white p-1.5 sm:p-4">
+                    <div className="absolute inset-0 bg-gradient-to-tr from-[#F6F3ED] via-[#F9F6F0] to-[#EAE4D8]/20 z-0" />
+                    
+                    <picture className="w-full h-full sm:h-2/3 rounded-xl sm:rounded-[28px] overflow-hidden border border-stone-100 z-10 relative shadow block">
+                      <source media="(max-width: 640px)" srcSet={mobileHeroImageUrl} />
+                      <source media="(max-width: 1024px)" srcSet={tabletHeroImageUrl} />
+                      {desktopHeroImageUrl ? (
+                        <img 
+                          src={desktopHeroImageUrl} 
+                          alt="Storefront Hero Staple" 
+                          loading="lazy"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-stone-200" />
+                      )}
+                    </picture>
 
-                  {/* Discount Offer Badge */}
-                  {offerBadgeText && (
-                    <div className="absolute top-3 right-3 sm:top-8 sm:right-8 bg-[#C68A2B] text-white text-[8px] sm:text-xs font-extrabold uppercase py-1 px-2 sm:py-2 sm:px-3.5 rounded-full shadow-md sm:shadow-lg z-20 flex flex-col items-center leading-none">
-                      <span>{offerBadgeText}</span>
+                    <div className="hidden sm:block p-4 relative z-10 space-y-2 mt-4 text-left">
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-[#C68A2B] bg-[#C68A2B]/10 px-2 py-0.5 rounded-full inline-block">
+                        {currentHero.isFeatured ? '★ Featured Harvest' : 'Staple Harvest of the Month'}
+                      </span>
+                      <h3 className="font-serif text-lg font-bold text-[#2F3B0C] line-clamp-1">
+                        {featuredProductName}
+                      </h3>
+                      <div className="flex justify-between items-center pt-1">
+                        <div className="flex items-baseline space-x-2">
+                          <span className="text-base font-bold text-[#4E641A]">₹{featuredProductPrice}</span>
+                          {featuredProductOriginalPrice > featuredProductPrice && (
+                            <span className="text-xs line-through text-stone-400 font-medium">₹{featuredProductOriginalPrice}</span>
+                          )}
+                        </div>
+                        <button 
+                          onClick={handleFeaturedProductAction}
+                          disabled={hasFeaturedProduct && featuredProduct.inventory <= 0}
+                          className={`px-4 py-2 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg transition shadow-sm border-none ${
+                            hasFeaturedProduct && featuredProduct.inventory <= 0 
+                              ? 'bg-stone-300 cursor-not-allowed' 
+                              : 'bg-[#4E641A] hover:bg-[#2F3B0C] cursor-pointer'
+                          }`}
+                        >
+                          {hasFeaturedProduct && featuredProduct.inventory <= 0 ? 'Sold Out' : 'Quick Add'}
+                        </button>
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    {/* Discount Offer Badge */}
+                    {offerBadgeText && (
+                      <div className="absolute top-3 right-3 sm:top-8 sm:right-8 bg-[#C68A2B] text-white text-[8px] sm:text-xs font-extrabold uppercase py-1 px-2 sm:py-2 sm:px-3.5 rounded-full shadow-md sm:shadow-lg z-20 flex flex-col items-center leading-none">
+                        <span>{offerBadgeText}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {(floatingBadgeTitle || floatingBadgeSubtitle) && (
                   <div className="hero-floating-card flex absolute -bottom-6 -left-6 bg-white/80 border border-[#EAE4D8] rounded-2xl p-4 shadow-lg items-center space-x-3.5 z-20">
@@ -1055,32 +1233,19 @@ export default function Home() {
   };
 
   const renderCollectionsSection = () => {
-    const collectionsToShow = homepageCollections.length > 0 
-      ? homepageCollections
-      : [
-          {
-            id: "default-oils",
-            title: "Pure Wood Pressed Oils",
-            badge: "Wood Ghanis",
-            description: "Extracted under low heat using slow mechanical Vagai wood press logs. Zero refinement chemicals or bleaching agents.",
-            image: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&q=80&w=800",
-            ctaText: "Browse Oils Collection",
-            categorySlug: "cold-pressed-oils"
-          },
-          {
-            id: "default-ghee",
-            title: "Traditional Village Ghee",
-            badge: "Curd Churned Bilona",
-            description: "Slowly melted over firewood logs from organic hand-churned butter of grass-fed desi Gir Cows.",
-            image: "https://images.unsplash.com/photo-1588166524941-3bf61a9c41db?auto=format&fit=crop&q=80&w=800",
-            ctaText: "Browse Ghee Collection",
-            categorySlug: "ghee"
-          }
-        ];
+    const collectionsToShow = homepageCollections;
+
+    if (collectionsToShow.length === 0) {
+      if (isLoading) {
+        return <CollectionsSkeleton />;
+      }
+      return null;
+    }
 
     const gridColsClass = collectionsToShow.length >= 3 
       ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" 
       : "grid grid-cols-1 md:grid-cols-2 gap-8";
+
 
     return (
       <section key="collections" id="collections-grid" className="py-20 px-6 md:px-12 max-w-7xl mx-auto border-b border-[#EAE4D8]">
@@ -1278,8 +1443,16 @@ export default function Home() {
   };
 
   const renderReviewsSection = () => {
+    if (testimonialsList.length === 0) {
+      if (isLoading) {
+        return <TestimonialsSkeleton />;
+      }
+      return null;
+    }
+
     return (
       <section key="reviews" className="py-20 px-6 md:px-12 bg-[#F3EFE6]/40 border-b border-[#EAE4D8]">
+
         <div className="max-w-7xl mx-auto">
           <div className="text-center max-w-xl mx-auto space-y-3 mb-16">
             <span className="text-xs font-bold uppercase tracking-widest text-[#C68A2B]">
@@ -1423,8 +1596,43 @@ export default function Home() {
     }
   };
 
+  const isPageLoaded = homepageConfigLoaded && categoriesLoaded && settingsLoaded;
+
+  if (apiError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#F9F6F0] p-6 text-center">
+        <div className="max-w-md p-8 bg-white border border-[#EAE4D8] rounded-[32px] shadow-sm space-y-6">
+          <div className="w-16 h-16 bg-red-50 text-red-550 rounded-full flex items-center justify-center mx-auto text-2xl">
+            ⚠️
+          </div>
+          <div className="space-y-2">
+            <h2 className="font-serif text-2xl font-bold text-[#2F3B0C]">Failed to Load Content</h2>
+            <p className="text-sm text-stone-500 leading-relaxed font-medium">
+              Unable to load content. Please refresh.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setApiError(false);
+              setIsLoading(true);
+              loadHomepageData();
+            }}
+            className="px-8 py-3 bg-[#4E641A] hover:bg-[#2F3B0C] text-white text-xs font-bold uppercase tracking-wider rounded-xl transition cursor-pointer border-none font-semibold"
+          >
+            Refresh Page
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading || !isPageLoaded) {
+    return <HomepageSkeleton />;
+  }
+
   return (
     <Profiler id="Homepage" onRender={onRenderCallback}>
+
       <div className="flex flex-col bg-[#F9F6F0] overflow-hidden w-full relative pt-20">
         
         {/* FLOATING SUCCESS TOAST MICRO-ANIMATION */}
