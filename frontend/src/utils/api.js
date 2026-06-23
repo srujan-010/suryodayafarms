@@ -40,12 +40,17 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
+    const status = error.response?.status;
+    const message = error.response?.data?.message || 'Something went wrong. Please try again.';
+
     if (error.config?.metadata?.startTime) {
       const duration = Date.now() - error.config.metadata.startTime;
-      console.error(`[API Error] ${error.config.method.toUpperCase()} ${error.config.url} took ${duration}ms - Error: ${error.message}`);
+      if (status !== 401) {
+        console.error(`[API Error] ${error.config.method.toUpperCase()} ${error.config.url} took ${duration}ms - Error: ${error.message}`);
+      } else {
+        console.log(`[API Info] ${error.config.method.toUpperCase()} ${error.config.url} took ${duration}ms - Status: 401 (Guest Mode)`);
+      }
     }
-    const message = error.response?.data?.message || 'Something went wrong. Please try again.';
-    const status = error.response?.status;
 
     // Suppress logging expected 401 Unauthorized codes (e.g. guest users / expired sessions)
     if (status !== 401) {
