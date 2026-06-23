@@ -64,7 +64,7 @@ export default function CategoryCollection() {
 
   const fetchCategoryAndProducts = async () => {
     setIsLoading(true);
-    if (slug === 'uncategorized') {
+    if (slug?.toLowerCase() === 'uncategorized') {
       setCategory(null);
       setIsLoading(false);
       return;

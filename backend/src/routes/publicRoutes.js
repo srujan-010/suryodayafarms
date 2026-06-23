@@ -272,7 +272,8 @@ router.get('/homepage', async (req, res, next) => {
     const categories = await prisma.category.findMany({
       where: { 
         isVisible: true,
-        slug: { not: 'uncategorized' }
+        slug: { not: 'uncategorized' },
+        name: { not: 'Uncategorized' }
       },
       include: {
         _count: { select: { products: true } }

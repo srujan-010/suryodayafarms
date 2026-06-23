@@ -168,7 +168,9 @@ export default function Products() {
   const fetchCategories = async () => {
     try {
       const response = await api.get('/products/categories');
-      const filtered = (response.categories || []).filter(c => c.slug !== 'uncategorized');
+      const filtered = (response.categories || []).filter(
+        c => c.slug?.toLowerCase() !== 'uncategorized' && c.name?.toLowerCase() !== 'uncategorized'
+      );
       setCategories([{ id: 'All', name: 'All', slug: 'All' }, ...filtered]);
     } catch (err) {
       console.error(err);

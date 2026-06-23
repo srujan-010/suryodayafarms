@@ -1655,6 +1655,9 @@ export default function AdminDashboard() {
     e.preventDefault();
     const errors = {};
     if (!categoryForm.name) errors.name = 'Category name is required';
+    if (categoryForm.name.toLowerCase().trim() === 'uncategorized') {
+      errors.name = 'The category name "Uncategorized" is reserved.';
+    }
 
     if (Object.keys(errors).length > 0) {
       setCategoryFormErrors(errors);
@@ -1707,7 +1710,7 @@ export default function AdminDashboard() {
   const handleRemoveProductFromCategory = async (productId) => {
     const confirmed = await modal.confirm(
       'Remove Product?',
-      "Are you sure you want to remove this product? It will be reassigned to 'Uncategorized'.",
+      "Are you sure you want to remove this product from this category?",
       'warning',
       'Remove',
       'Cancel'
@@ -1732,7 +1735,7 @@ export default function AdminDashboard() {
   const handleDeleteCategory = async (id) => {
     const confirmed = await modal.confirm(
       'Delete Category?',
-      "Are you sure you want to delete this category? All its linked products will be automatically reassigned to the 'Uncategorized' fallback category.",
+      "Are you sure you want to delete this category? Linked products will be disconnected from it.",
       'warning',
       'Delete Category',
       'Cancel'
@@ -5176,15 +5179,13 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="flex items-center space-x-3">
-                    {categoryDetails.slug !== 'uncategorized' && (
-                      <button
-                        onClick={() => handleDeleteCategory(categoryDetails.id)}
-                        className="px-4 py-2 border border-red-200 text-red-650 hover:bg-red-50 text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center space-x-1.5 cursor-pointer bg-white"
-                      >
-                        <FiTrash2 size={12} className="text-red-500" />
-                        <span className="text-red-600">Delete</span>
-                      </button>
-                    )}
+                    <button
+                      onClick={() => handleDeleteCategory(categoryDetails.id)}
+                      className="px-4 py-2 border border-red-200 text-red-650 hover:bg-red-50 text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center space-x-1.5 cursor-pointer bg-white"
+                    >
+                      <FiTrash2 size={12} className="text-red-500" />
+                      <span className="text-red-600">Delete</span>
+                    </button>
 
                     <button
                       onClick={() => {
@@ -5388,7 +5389,7 @@ export default function AdminDashboard() {
                   />
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full text-left">
-                    {categories.map((cat) => (
+                    {categories.filter(c => c.slug?.toLowerCase() !== 'uncategorized' && c.name?.toLowerCase() !== 'uncategorized').map((cat) => (
                       <div 
                         key={cat.id} 
                         onClick={() => setSelectedCategoryId(cat.id)}
@@ -5415,15 +5416,13 @@ export default function AdminDashboard() {
                           >
                             View Details
                           </span>
-                          {cat.slug !== 'uncategorized' && (
-                            <button
-                              onClick={() => handleDeleteCategory(cat.id)}
-                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition cursor-pointer bg-transparent border-none flex items-center justify-center"
-                              title="Delete Category"
-                            >
-                              <FiTrash2 size={13} />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleDeleteCategory(cat.id)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition cursor-pointer bg-transparent border-none flex items-center justify-center"
+                            title="Delete Category"
+                          >
+                            <FiTrash2 size={13} />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -5505,7 +5504,7 @@ export default function AdminDashboard() {
                               <div className="flex flex-col min-w-0">
                                 <span className="text-xs font-bold truncate text-[#37411A]">{prod.name}</span>
                                 <span className="text-[9px] text-stone-400 font-semibold mt-0.5">
-                                  SKU: {prod.sku} • Stock: {prod.inventory} • Current: {prod.categories?.map(c => c.name).join(', ') || 'Uncategorized'}
+                                  SKU: {prod.sku} • Stock: {prod.inventory} • Current: {prod.categories?.map(c => c.name).join(', ') || 'No Category'}
                                 </span>
                               </div>
                             </div>

@@ -36,6 +36,10 @@ router.get('/analytics', async (req, res, next) => {
         select: { totalAmount: true }
       }),
       prisma.category.findMany({
+        where: {
+          slug: { not: 'uncategorized' },
+          name: { not: 'Uncategorized' }
+        },
         include: {
           _count: { select: { products: true } }
         }
@@ -335,6 +339,10 @@ router.post('/categories', async (req, res, next) => {
 
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
 
+    if (name.toLowerCase().trim() === 'uncategorized' || slug === 'uncategorized') {
+      return res.status(400).json({ success: false, message: 'Creating "Uncategorized" category is not allowed.' });
+    }
+
     const category = await prisma.category.create({
       data: { 
         name, 
@@ -373,7 +381,11 @@ router.put('/categories/:id', async (req, res, next) => {
     };
 
     if (name) {
-      updatedData.slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+      if (name.toLowerCase().trim() === 'uncategorized' || slug === 'uncategorized') {
+        return res.status(400).json({ success: false, message: 'Renaming to "Uncategorized" category is not allowed.' });
+      }
+      updatedData.slug = slug;
     }
 
     const category = await prisma.category.update({
@@ -405,7 +417,7 @@ router.get('/categories/:id', async (req, res, next) => {
       }
     });
 
-    if (!category) {
+    if (!category || category.slug === 'uncategorized' || category.name.toLowerCase() === 'uncategorized') {
       return res.status(404).json({ success: false, message: 'Category not found.' });
     }
 
@@ -415,7 +427,7 @@ router.get('/categories/:id', async (req, res, next) => {
   }
 });
 
-// DELETE CATEGORY (SAFE DELETION REASSIGNING PRODUCTS TO FALLBACK)
+// DELETE CATEGORY
 // DELETE /api/admin/categories/:id
 router.delete('/categories/:id', async (req, res, next) => {
   const { id } = req.params;
@@ -426,60 +438,26 @@ router.delete('/categories/:id', async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Category not found.' });
     }
 
-    if (category.slug === 'uncategorized') {
-      return res.status(400).json({ success: false, message: 'The fallback Uncategorized category cannot be deleted.' });
+    if (category.slug === 'uncategorized' || category.name.toLowerCase() === 'uncategorized') {
+      return res.status(400).json({ success: false, message: 'The Uncategorized category is reserved and cannot be operated on.' });
     }
 
-    // Upsert the fallback Uncategorized category
-    const uncategorizedCategory = await prisma.category.upsert({
-      where: { slug: 'uncategorized' },
-      update: {},
-      create: {
-        name: 'Uncategorized',
-        slug: 'uncategorized',
-        description: 'Default category for items without a specific category assignment.'
-      }
-    });
-
-    // Reassign linked products for many-to-many
-    const linkedProducts = await prisma.product.findMany({
-      where: {
-        categories: {
-          some: { id }
+    // Disconnect category from all products first (many-to-many relationship)
+    await prisma.category.update({
+      where: { id },
+      data: {
+        products: {
+          set: []
         }
-      },
-      include: { categories: true }
-    });
-
-    for (const prod of linkedProducts) {
-      const otherCategories = prod.categories.filter(c => c.id !== id);
-      if (otherCategories.length === 0) {
-        await prisma.product.update({
-          where: { id: prod.id },
-          data: {
-            categories: {
-              set: [{ id: uncategorizedCategory.id }]
-            }
-          }
-        });
-      } else {
-        await prisma.product.update({
-          where: { id: prod.id },
-          data: {
-            categories: {
-              disconnect: { id }
-            }
-          }
-        });
       }
-    }
+    });
 
     // Delete category
     await prisma.category.delete({ where: { id } });
 
     res.status(200).json({ 
       success: true, 
-      message: 'Category successfully deleted. Linked products were reassigned to Uncategorized.' 
+      message: 'Category successfully deleted.' 
     });
   } catch (error) {
     next(error);
@@ -521,9 +499,10 @@ router.post('/categories/:id/assign', async (req, res, next) => {
   }
 });
 
-// REMOVE PRODUCT FROM CATEGORY (REASSIGN TO UNCATEGORIZED)
+// REMOVE PRODUCT FROM CATEGORY
 // POST /api/admin/categories/:id/remove
 router.post('/categories/:id/remove', async (req, res, next) => {
+  const { id } = req.params;
   const { productId } = req.body;
 
   try {
@@ -531,47 +510,26 @@ router.post('/categories/:id/remove', async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'productId is required.' });
     }
 
-    // Upsert the fallback Uncategorized category
-    const uncategorizedCategory = await prisma.category.upsert({
-      where: { slug: 'uncategorized' },
-      update: {},
-      create: {
-        name: 'Uncategorized',
-        slug: 'uncategorized',
-        description: 'Default category for items without a specific category assignment.'
+    const product = await prisma.product.findUnique({
+      where: { id: productId }
+    });
+
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found.' });
+    }
+
+    const updatedProduct = await prisma.product.update({
+      where: { id: productId },
+      data: {
+        categories: {
+          disconnect: { id }
+        }
       }
     });
 
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-      include: { categories: true }
-    });
-
-    const otherCategories = product.categories.filter(c => c.id !== id);
-    let updatedProduct;
-    if (otherCategories.length === 0) {
-      updatedProduct = await prisma.product.update({
-        where: { id: productId },
-        data: {
-          categories: {
-            set: [{ id: uncategorizedCategory.id }]
-          }
-        }
-      });
-    } else {
-      updatedProduct = await prisma.product.update({
-        where: { id: productId },
-        data: {
-          categories: {
-            disconnect: { id }
-          }
-        }
-      });
-    }
-
     res.status(200).json({ 
       success: true, 
-      message: 'Product removed from category and reassigned to Uncategorized.', 
+      message: 'Product removed from category.', 
       product: updatedProduct 
     });
   } catch (error) {
@@ -1043,7 +1001,11 @@ router.put('/homepage/collections/:id/toggle-active', async (req, res, next) => 
 router.get('/homepage/categories', async (req, res, next) => {
   try {
     const homepageCategories = await prisma.category.findMany({
-      where: { promoVisible: true },
+      where: { 
+        promoVisible: true,
+        slug: { not: 'uncategorized' },
+        name: { not: 'Uncategorized' }
+      },
       orderBy: { position: 'asc' }
     });
     res.status(200).json({ success: true, categories: homepageCategories });

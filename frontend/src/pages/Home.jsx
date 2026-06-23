@@ -227,7 +227,11 @@ export default function Home() {
         }
         if (cmsRes.autoRotate !== undefined) freshAutoRotate = cmsRes.autoRotate;
         if (cmsRes.slideDuration !== undefined) freshDuration = cmsRes.slideDuration;
-        if (cmsRes.categories) freshCategories = cmsRes.categories;
+        if (cmsRes.categories) {
+          freshCategories = cmsRes.categories.filter(
+            c => c.slug?.toLowerCase() !== 'uncategorized' && c.name?.toLowerCase() !== 'uncategorized'
+          );
+        }
         if (cmsRes.collections && cmsRes.collections.length > 0) freshCollections = cmsRes.collections;
         if (cmsRes.sectionOrder) {
           freshOrder = cmsRes.sectionOrder.split(',').filter(s => s !== 'reviews');
@@ -245,8 +249,11 @@ export default function Home() {
 
       // Fallback categories sync if dynamic CMS config didn't provide categories
       if (freshCategories.length === 0 && categoriesRes.categories && categoriesRes.categories.length > 0) {
-        setHomepageCategories(categoriesRes.categories);
-        freshCategories = categoriesRes.categories;
+        const filteredFallback = categoriesRes.categories.filter(
+          c => c.slug?.toLowerCase() !== 'uncategorized' && c.name?.toLowerCase() !== 'uncategorized'
+        );
+        setHomepageCategories(filteredFallback);
+        freshCategories = filteredFallback;
       }
 
       // 3. Process Testimonials

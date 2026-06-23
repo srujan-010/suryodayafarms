@@ -116,7 +116,8 @@ router.get('/categories', async (req, res, next) => {
   try {
     const categories = await prisma.category.findMany({
       where: {
-        slug: { not: 'uncategorized' }
+        slug: { not: 'uncategorized' },
+        name: { not: 'Uncategorized' }
       },
       include: {
         _count: { select: { products: true } }
@@ -137,7 +138,7 @@ router.get('/categories/:slug', async (req, res, next) => {
     const category = await prisma.category.findUnique({
       where: { slug }
     });
-    if (!category || slug === 'uncategorized') {
+    if (!category || slug === 'uncategorized' || category.name.toLowerCase() === 'uncategorized') {
       return res.status(404).json({ success: false, message: 'Category not found.' });
     }
     res.status(200).json({ success: true, category });
