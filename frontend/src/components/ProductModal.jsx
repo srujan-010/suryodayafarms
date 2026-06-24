@@ -1,9 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FiX, FiCheck, FiShoppingBag, FiInfo } from 'react-icons/fi';
 import { FaWhatsapp } from 'react-icons/fa';
+import { getOptimizedImageUrl, getImageSrcSet } from '../utils/imageOptimizer';
 
 export default function ProductModal({ product, onClose }) {
   if (!product) return null;
+
+  const [isImgLoaded, setIsImgLoaded] = useState(false);
 
   const whatsappMessage = encodeURIComponent(
     `Namaste Suryodaya Farms! I am interested in inquiring about your premium organic "${product.name}" (${product.price}). Please share more details regarding delivery timelines.`
@@ -27,19 +30,28 @@ export default function ProductModal({ product, onClose }) {
         </button>
 
         {/* Image Column */}
-        <div className="w-full md:w-1/2 relative min-h-[250px] md:min-h-[450px] bg-light-beige">
+        <div className="w-full md:w-1/2 relative min-h-[250px] md:min-h-[450px] bg-transparent flex items-center justify-center">
+          {!isImgLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-transparent">
+              <div className="w-20 h-20 rounded-full bg-light-beige/30 animate-pulse" />
+            </div>
+          )}
           <img
-            src={product.image}
+            src={getOptimizedImageUrl(product.image, { width: 800, cropMode: 'limit' })}
+            srcSet={getImageSrcSet(product.image, { widths: [400, 800, 1500], cropMode: 'limit' })}
+            sizes="(max-width: 768px) 100vw, 450px"
             alt={product.name}
-            className="w-full h-full object-cover"
+            onLoad={() => setIsImgLoaded(true)}
+            className={`w-full h-full object-contain p-6 filter drop-shadow-[0_15px_25px_rgba(0,0,0,0.15)] transition-opacity duration-300 ${
+              isImgLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-dark-olive/40 via-transparent to-transparent" />
           
-          <div className="absolute bottom-6 left-6">
-            <span className="inline-block bg-sunrise-gold text-dark-olive font-sans text-xs font-semibold uppercase tracking-widest px-3.5 py-1.5 rounded-full mb-3 shadow-md">
+          <div className="absolute bottom-6 left-6 z-10">
+            <span className="inline-block bg-[#4E641A] text-white font-sans text-xs font-semibold uppercase tracking-widest px-3.5 py-1.5 rounded-full mb-3 shadow-md">
               {product.category}
             </span>
-            <h3 className="font-serif text-2xl md:text-3xl text-white font-bold drop-shadow-md leading-tight">
+            <h3 className="font-serif text-2xl md:text-3xl text-dark-olive font-bold leading-tight">
               {product.name}
             </h3>
           </div>

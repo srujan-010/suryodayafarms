@@ -65,6 +65,7 @@ export default function App() {
           <Route path="/wishlist" element={<Wishlist />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/profile" element={<Dashboard />} />
+          <Route path="/profile/:tab" element={<Dashboard />} />
           <Route path="/profile/shipments/:orderId" element={<ShipmentDetails />} />
           <Route path="/contact" element={<Contact />} />
         </Route>
@@ -82,6 +83,8 @@ export default function App() {
         <Route path="/admin/coupons" element={<AdminDashboard />} />
         <Route path="/admin/reviews" element={<AdminDashboard />} />
         <Route path="/admin/reviews/:productId" element={<AdminDashboard />} />
+        <Route path="/admin/support-tickets" element={<AdminDashboard />} />
+        <Route path="/admin/support-tickets/:id" element={<AdminDashboard />} />
 
         {/* 3. Fallback Redirection */}
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -14,7 +14,10 @@ export const useSettingsStore = create((set, get) => ({
     socialTwitter: 'https://twitter.com/suryodayafarms',
     socialFacebook: 'https://facebook.com/suryodayafarms',
     socialInstagram: 'https://instagram.com/suryodayafarms',
-    socialYoutube: 'https://youtube.com/suryodayafarms'
+    socialYoutube: 'https://youtube.com/suryodayafarms',
+    freeDeliveryThreshold: '2',
+    shippingCharge: '80',
+    serviceableStates: 'Telangana, Andhra Pradesh'
   },
   settingsLoaded: false,
   isLoading: false,

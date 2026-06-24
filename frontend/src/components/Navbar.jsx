@@ -5,6 +5,7 @@ import { GiSun } from 'react-icons/gi';
 import { useAuthStore } from '../store/useAuthStore';
 import { useCartStore } from '../store/useCartStore';
 import { useWishlistStore } from '../store/useWishlistStore';
+import { getOptimizedImageUrl } from '../utils/imageOptimizer';
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -64,8 +65,8 @@ export default function Navbar() {
       <nav
         className={`fixed top-0 left-0 w-full z-50 transition-all duration-500 ease-in-out px-3 sm:px-6 md:px-12 app-header-nav ${
           isScrolled || isCartOpen || isMobileMenuOpen
-            ? 'bg-cream-bg/95 backdrop-blur-md shadow-md border-b border-light-beige py-3'
-            : 'bg-cream-bg/40 backdrop-blur-md border-b border-white/10 py-5'
+            ? 'bg-cream-bg/95 backdrop-blur-md shadow-md border-b border-light-beige py-2 lg:py-3'
+            : 'bg-cream-bg/40 backdrop-blur-md border-b border-white/10 py-3.5 lg:py-5'
         }`}
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -78,7 +79,7 @@ export default function Navbar() {
             <img 
               src="https://i.ibb.co/Pz01P9Y5/Whats-App-Image-2026-05-29-at-6-51-48-PM-removebg-preview.png" 
               alt="Suryodaya Farms Logo" 
-              className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 object-contain transition duration-500 group-hover:scale-105"
+              className="h-10 sm:h-12 md:h-16 lg:h-20 w-auto object-contain transition duration-500 group-hover:scale-105"
             />
             <div className="flex flex-col justify-center text-left">
               <span className="font-serif text-base sm:text-xl md:text-2xl font-bold tracking-wide text-dark-olive leading-none group-hover:text-primary-green transition-colors duration-300">
@@ -170,29 +171,41 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Mobile Menu Hamburger + Cart icons */}
-          <div className="lg:hidden flex items-center gap-1 sm:gap-3">
+          {/* Mobile Menu Hamburger + Cart/Wishlist/Profile icons */}
+          <div className="lg:hidden flex items-center gap-1 sm:gap-2.5">
             
-             <Link
+            <Link
               to="/wishlist"
-              className={`p-1.5 sm:p-2 transition-colors relative ${isScrolled ? 'text-dark-olive' : 'text-dark-olive'}`}
+              className="p-2 transition-colors relative text-dark-olive hover:text-primary-green"
               title="Wishlist"
             >
-              <FiHeart size={19} />
+              <FiHeart size={20} className="stroke-[2px]" />
               {wishlistItems.length > 0 && (
-                <span className="absolute top-0.5 right-0.5 bg-primary-green text-white font-sans text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                <span className="absolute top-1 right-1 bg-primary-green text-white font-sans text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">
                   {wishlistItems.length}
                 </span>
               )}
             </Link>
 
             <button
-              onClick={() => setIsCartOpen(true)}
-              className={`relative p-1.5 sm:p-2 focus:outline-none cursor-pointer ${isScrolled ? 'text-dark-olive' : 'text-dark-olive'}`}
+              onClick={handleProfileClick}
+              className="p-2 transition-colors relative text-dark-olive hover:text-primary-green cursor-pointer"
+              title={isAuthenticated ? "Dashboard" : "Login"}
             >
-              <FiShoppingBag size={20} />
+              <FiUser size={20} className="stroke-[2px]" />
+              {isAuthenticated && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary-green border border-white" />
+              )}
+            </button>
+
+            <button
+              onClick={() => setIsCartOpen(true)}
+              className="relative p-2 focus:outline-none cursor-pointer text-dark-olive hover:text-primary-green"
+              title="Cart Drawer"
+            >
+              <FiShoppingBag size={20} className="stroke-[2px]" />
               {cartItems.length > 0 && (
-                <span className="absolute top-0.5 right-0.5 bg-primary-green text-white font-sans text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                <span className="absolute top-1 right-1 bg-primary-green text-white font-sans text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">
                   {cartItems.reduce((acc, item) => acc + item.quantity, 0)}
                 </span>
               )}
@@ -200,11 +213,10 @@ export default function Navbar() {
             
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className={`p-1.5 sm:p-2 rounded-lg transition-colors focus:outline-none cursor-pointer ${
-                isScrolled ? 'text-dark-olive' : 'text-dark-olive'
-              }`}
+              className="p-2 rounded-lg transition-colors focus:outline-none cursor-pointer text-dark-olive hover:text-primary-green"
+              title="Toggle Menu"
             >
-              {isMobileMenuOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+              {isMobileMenuOpen ? <FiX size={22} className="stroke-[2.5px]" /> : <FiMenu size={22} className="stroke-[2.5px]" />}
             </button>
           </div>
 
@@ -263,11 +275,13 @@ export default function Navbar() {
                 
                 return (
                   <div key={item.id} className="flex gap-4 items-start border-b border-light-beige/50 pb-5 last:border-b-0">
-                    <img
-                      src={itemImg}
-                      alt={item.product.name}
-                      className="w-16 h-16 rounded-xl object-cover border border-light-beige bg-light-beige shrink-0"
-                    />
+                    <div className="w-16 h-16 bg-transparent shrink-0 flex items-center justify-center relative">
+                      <img
+                        src={getOptimizedImageUrl(itemImg, { width: 80, height: 80, cropMode: 'fit' })}
+                        alt={item.product.name}
+                        className="w-full h-full object-contain p-1 filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.1)]"
+                      />
+                    </div>
                     <div className="flex-grow flex flex-col gap-1">
                       <span className="font-serif text-sm font-bold text-dark-olive leading-tight">
                         {item.product.name}
@@ -373,7 +387,7 @@ export default function Navbar() {
               <img 
                 src="https://i.ibb.co/Pz01P9Y5/Whats-App-Image-2026-05-29-at-6-51-48-PM-removebg-preview.png" 
                 alt="Suryodaya Farms Logo" 
-                className="w-14 h-14 object-contain"
+                className="h-10 w-auto object-contain"
               />
               <div className="flex flex-col justify-center">
                 <span className="font-serif text-lg font-bold text-dark-olive leading-none">

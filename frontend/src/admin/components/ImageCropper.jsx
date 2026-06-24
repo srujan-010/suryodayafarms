@@ -35,11 +35,12 @@ export default function ImageCropper({ imageSrc, onCropComplete, onCancel, targe
 
   // Helper math for calculations
   const getRenderDetails = () => {
-    if (!imgDimensions.width || !viewportSize.width) return null;
+    if (!imgDimensions.width || !viewportSize.width || !cropBox.width) return null;
 
-    const baseScale = Math.max(
-      viewportSize.width / imgDimensions.width,
-      viewportSize.height / imgDimensions.height
+    // Calculate baseScale to fit the entire image inside the crop area by default
+    const baseScale = Math.min(
+      cropBox.width / imgDimensions.width,
+      cropBox.height / imgDimensions.height
     );
 
     const baseWidth = imgDimensions.width * baseScale;
@@ -48,9 +49,9 @@ export default function ImageCropper({ imageSrc, onCropComplete, onCancel, targe
     const zoomedWidth = baseWidth * zoom;
     const zoomedHeight = baseHeight * zoom;
 
-    // Bounds for clamping pan so there are no empty gaps
-    const maxPanX = Math.max(0, (zoomedWidth - viewportSize.width) / 2);
-    const maxPanY = Math.max(0, (zoomedHeight - viewportSize.height) / 2);
+    // Bounds for clamping pan (allow dragging even when zoomed out below 100%)
+    const maxPanX = Math.max(viewportSize.width, zoomedWidth) / 2;
+    const maxPanY = Math.max(viewportSize.height, zoomedHeight) / 2;
 
     return {
       baseScale,
@@ -534,8 +535,8 @@ export default function ImageCropper({ imageSrc, onCropComplete, onCancel, targe
               <span className="text-[9px] font-extrabold uppercase tracking-wider text-stone-400">Zoom</span>
               <input
                 type="range"
-                min="1"
-                max="3"
+                min="0.3"
+                max="4"
                 step="0.01"
                 value={zoom}
                 onChange={(e) => setZoom(parseFloat(e.target.value))}
@@ -607,6 +608,13 @@ export default function ImageCropper({ imageSrc, onCropComplete, onCancel, targe
             className="px-5 py-2.5 rounded-xl border border-stone-200 text-stone-500 hover:bg-stone-50 uppercase font-bold text-xxs tracking-wider cursor-pointer"
           >
             Discard
+          </button>
+          <button
+            type="button"
+            onClick={() => onCropComplete({ croppedImage: imageSrc, useOriginal: true })}
+            className="px-5 py-2.5 rounded-xl border border-[#4E641A] text-[#4E641A] hover:bg-[#4E641A]/5 uppercase font-bold text-xxs tracking-wider cursor-pointer bg-transparent"
+          >
+            Use Original (No Crop)
           </button>
           <button
             type="button"

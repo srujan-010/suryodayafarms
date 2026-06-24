@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiStar, FiHeart, FiSearch } from 'react-icons/fi';
 import { useCartStore } from '../store/useCartStore';
 import { useWishlistStore } from '../store/useWishlistStore';
 import { useAuthStore } from '../store/useAuthStore';
-import { getOptimizedImageUrl } from '../utils/imageOptimizer';
+import { getOptimizedImageUrl, getImageSrcSet } from '../utils/imageOptimizer';
 
 const getCategoryEmoji = (name) => {
   const norm = (name || '').toLowerCase();
@@ -64,6 +64,36 @@ export default function ProductCard({ product, onQuickView }) {
   const [isAdding, setIsAdding] = useState(false);
   const [isAdded, setIsAdded] = useState(false);
 
+  // Smooth image transition state variables
+  const [isHovered, setIsHovered] = useState(false);
+  const [isIntersecting, setIsIntersecting] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [loadedImages, setLoadedImages] = useState({});
+  const cardRef = useRef(null);
+
+  // Set up intersection observer for mobile viewports to trigger visible carousel
+  useEffect(() => {
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    if (!isMobile) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsIntersecting(entry.isIntersecting);
+      },
+      { threshold: 0.4 } // Activate visible carousel when 40% of card is in viewport
+    );
+
+    if (cardRef.current) {
+      observer.observe(cardRef.current);
+    }
+
+    return () => {
+      if (cardRef.current) {
+        observer.unobserve(cardRef.current);
+      }
+    };
+  }, []);
+
   const categoryName = (product.categories && product.categories.length > 0)
     ? product.categories[0].name
     : (product.category?.name || product.category || product.tag || 'Organic');
@@ -120,6 +150,63 @@ export default function ProductCard({ product, onQuickView }) {
     }
   }, [product]);
 
+  // Parse and optimize all unique product images (declared before early return to obey React hooks order rules)
+  const getProductImageUrls = () => {
+    let urls = [];
+    if (Array.isArray(product.images)) {
+      product.images.forEach(img => {
+        if (typeof img === 'string') {
+          if (img) urls.push(img);
+        } else if (img && typeof img === 'object' && img.url) {
+          urls.push(img.url);
+        }
+      });
+    }
+    // Fallback logic
+    if (urls.length === 0) {
+      if (product.image) urls.push(product.image);
+      if (product.hoverImage) urls.push(product.hoverImage);
+    }
+    return [...new Set(urls)].filter(Boolean);
+  };
+
+  const allImages = getProductImageUrls();
+  const optimizedImages = allImages.map(url =>
+    getOptimizedImageUrl(url, { width: 800, cropMode: 'limit' })
+  );
+
+  const isActive = isHovered || isIntersecting;
+
+  // Handles image selection and slideshow transitions (declared before early return)
+  useEffect(() => {
+    if (optimizedImages.length <= 1) {
+      setCurrentImageIndex(0);
+      return;
+    }
+
+    if (optimizedImages.length === 2) {
+      setCurrentImageIndex(isActive ? 1 : 0);
+      return;
+    }
+
+    if (optimizedImages.length >= 3) {
+      if (!isActive) {
+        setCurrentImageIndex(0);
+        return;
+      }
+
+      const interval = setInterval(() => {
+        setCurrentImageIndex(prev => (prev + 1) % optimizedImages.length);
+      }, 2500); // Cycle every 2.5s
+
+      return () => clearInterval(interval);
+    }
+  }, [isActive, optimizedImages.length]);
+
+  const handleImageLoad = (index) => {
+    setLoadedImages(prev => ({ ...prev, [index]: true }));
+  };
+
   if (!selectedVariant) return null;
 
   const isOutOfStock = selectedVariant.isBase
@@ -136,11 +223,6 @@ export default function ProductCard({ product, onQuickView }) {
     (variantId ? item.variantId === variantId : !item.variantId)
   );
 
-  const rawFrontImage = product.image || (product.images?.length > 0 ? product.images[0].url : null) || (product.galleryImages?.length > 0 ? product.galleryImages[0] : '/placeholder.png');
-  const rawBackImage = product.hoverImage || product.galleryImage || (product.images?.length > 1 ? product.images[1].url : null) || (product.galleryImages?.length > 1 ? product.galleryImages[1] : null);
-
-  const frontImage = getOptimizedImageUrl(rawFrontImage, { width: 400, height: 400, cropMode: 'fill' });
-  const backImage = rawBackImage ? getOptimizedImageUrl(rawBackImage, { width: 400, height: 400, cropMode: 'fill' }) : null;
 
   const handleAddToCart = async (e) => {
     if (e) e.stopPropagation();
@@ -175,35 +257,44 @@ export default function ProductCard({ product, onQuickView }) {
 
   return (
     <motion.div
+      ref={cardRef}
       layout
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       className="group bg-white border border-[#EAE4D8] rounded-[24px] overflow-hidden shadow-sm hover:shadow-md hover:border-[#4E641A]/20 transition-all duration-500 flex flex-col justify-between h-full cursor-pointer relative w-full text-left product-card-wrapper"
     >
       {/* Product Image Section */}
       <div 
         onClick={handleCardClick}
-        className="relative aspect-[4/3] sm:aspect-square w-full overflow-hidden bg-[#F8F5F0] border-b border-[#EAE4D8]/40 shrink-0 product-card-image-wrapper"
+        className="relative aspect-square w-full overflow-hidden bg-transparent shrink-0 product-card-image-wrapper flex items-center justify-center"
       >
-        <img
-          src={frontImage}
-          alt={product.name}
-          width={400}
-          height={400}
-          loading="lazy"
-          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-all duration-300 product-card-image"
-        />
-        {backImage && (
-          <img
-            src={backImage}
-            alt={`${product.name} back view`}
-            width={400}
-            height={400}
-            loading="lazy"
-            className="absolute inset-0 w-full h-full object-cover opacity-0 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300 product-card-image-hover"
-          />
+        {!loadedImages[0] && (
+          <div className="absolute inset-0 flex items-center justify-center bg-transparent">
+            <div className="w-16 h-16 rounded-full bg-light-beige/30 animate-pulse" />
+          </div>
         )}
+        {optimizedImages.map((src, index) => (
+          <img
+            key={src}
+            src={src}
+            srcSet={getImageSrcSet(allImages[index], { widths: [400, 800], cropMode: 'limit' })}
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            alt={`${product.name} - view ${index + 1}`}
+            width={800}
+            height={800}
+            loading={index === 0 ? "lazy" : "eager"}
+            onLoad={() => handleImageLoad(index)}
+            className="absolute inset-0 w-full h-full object-contain p-3.5 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.12)] group-hover:scale-105 transition-opacity duration-600 ease-in-out product-card-image"
+            style={{
+              opacity: (index === currentImageIndex && loadedImages[index]) ? 1 : 0,
+              zIndex: index === currentImageIndex ? 10 : 0,
+              pointerEvents: index === currentImageIndex ? 'auto' : 'none'
+            }}
+          />
+        ))}
 
         {/* Wishlist Button */}
         <button 
@@ -338,23 +429,23 @@ export default function ProductCard({ product, onQuickView }) {
           )}
         </div>
 
-          {/* Pricing & CTA Block */}
-        <div className="pt-1.5 sm:pt-3 border-t border-stone-100 flex items-center justify-between gap-1.5 mt-auto product-card-action-bar">
-          <div className="flex flex-col text-left">
-            <span className="text-[8px] sm:text-[9px] font-bold text-stone-400 uppercase tracking-wider leading-none">Price</span>
-            <div className="flex items-baseline gap-0.5 sm:gap-1 mt-0.5 sm:mt-1">
-              <span className="text-xs sm:text-base font-extrabold text-[#4E641A]">
+        {/* Pricing & CTA Block */}
+        <div className="pt-2 border-t border-stone-100 flex flex-col gap-2 mt-auto w-full sm:flex-row sm:items-center sm:justify-between sm:pt-3 product-card-action-bar">
+          <div className="flex flex-row items-baseline justify-between sm:flex-col sm:items-start leading-none w-full sm:w-auto">
+            <span className="text-[8px] sm:text-[9px] font-bold text-stone-400 uppercase tracking-wider leading-none hidden sm:inline">Price</span>
+            <div className="flex items-baseline gap-1 mt-0.5 sm:mt-1">
+              <span className="text-sm sm:text-base font-extrabold text-[#4E641A]">
                 ₹{selectedVariant.price}
               </span>
               {selectedVariant.mrp > selectedVariant.price && (
-                <span className="text-[8px] sm:text-[9px] line-through text-stone-400 font-medium">
+                <span className="text-[10px] sm:text-[11px] line-through text-stone-400 font-medium">
                   ₹{selectedVariant.mrp}
                 </span>
               )}
             </div>
           </div>
           
-          <div className="flex items-center h-8 sm:h-9 relative overflow-hidden select-none">
+          <div className="w-full sm:w-24 md:w-28 h-9 relative overflow-hidden select-none">
             <AnimatePresence mode="wait">
               {!cartItem ? (
                 <motion.button
@@ -366,15 +457,15 @@ export default function ProductCard({ product, onQuickView }) {
                   type="button"
                   onClick={handleAddToCart}
                   disabled={isOutOfStock || isAdding}
-                  className={`px-2.5 py-1.5 sm:px-4 sm:py-2 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider rounded-xl transition-all duration-350 flex items-center justify-center space-x-1 shadow-sm border-none cursor-pointer select-none product-card-add-btn h-full w-full ${
+                  className={`px-3 py-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider rounded-xl transition-all duration-350 flex items-center justify-center space-x-1.5 shadow-sm border-none cursor-pointer select-none product-card-add-btn h-full w-full ${
                     isOutOfStock 
                       ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
-                      : 'bg-[#4E641A] hover:bg-[#2F3B0C] text-white hover:scale-[1.03] active:scale-[0.98]'
+                      : 'bg-[#4E641A] hover:bg-[#2F3B0C] text-white hover:scale-[1.02] active:scale-[0.98]'
                   }`}
                 >
                   <span>🛒</span>
                   <span>
-                    {isOutOfStock ? 'Out' : isAdding ? 'Adding...' : 'Add'}
+                    {isOutOfStock ? 'Out' : isAdding ? 'Adding...' : 'Add to Cart'}
                   </span>
                 </motion.button>
               ) : (
@@ -384,7 +475,7 @@ export default function ProductCard({ product, onQuickView }) {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ duration: 0.15 }}
-                  className="flex items-center justify-between bg-white border border-[#4E641A] text-[#4E641A] rounded-xl h-full shadow-sm w-20 sm:w-24 overflow-hidden"
+                  className="flex items-center justify-between bg-white border border-[#4E641A] text-[#4E641A] rounded-xl h-full shadow-sm w-full overflow-hidden"
                 >
                   <button
                     type="button"
@@ -400,11 +491,11 @@ export default function ProductCard({ product, onQuickView }) {
                         console.error(err);
                       }
                     }}
-                    className="px-2 sm:px-2.5 h-full bg-transparent hover:bg-[#4E641A]/5 text-[#4E641A] font-bold text-xs sm:text-sm border-none cursor-pointer flex items-center justify-center transition active:scale-90"
+                    className="px-3 h-full bg-transparent hover:bg-[#4E641A]/5 text-[#4E641A] font-bold text-sm border-none cursor-pointer flex items-center justify-center transition active:scale-90"
                   >
                     -
                   </button>
-                  <span className="font-sans text-[10px] sm:text-xs font-extrabold text-stone-900 select-none">
+                  <span className="font-sans text-xs font-extrabold text-stone-900 select-none">
                     {cartItem.quantity}
                   </span>
                   <button
@@ -417,7 +508,7 @@ export default function ProductCard({ product, onQuickView }) {
                         console.error(err);
                       }
                     }}
-                    className="px-2 sm:px-2.5 h-full bg-transparent hover:bg-[#4E641A]/5 text-[#4E641A] font-bold text-xs sm:text-sm border-none cursor-pointer flex items-center justify-center transition active:scale-90"
+                    className="px-3 h-full bg-transparent hover:bg-[#4E641A]/5 text-[#4E641A] font-bold text-sm border-none cursor-pointer flex items-center justify-center transition active:scale-90"
                   >
                     +
                   </button>

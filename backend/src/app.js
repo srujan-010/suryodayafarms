@@ -80,6 +80,7 @@ import productRoutes from './routes/productRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import publicRoutes from './routes/publicRoutes.js';
+import supportRoutes from './routes/supportRoutes.js';
 
 app.use('/api/auth', authRoutes);         // Sign-in, Register, Profile, Saved Addresses
 app.use('/api/products', productRoutes);     // Products catalog, reviews, category lists
@@ -90,6 +91,7 @@ app.use('/api/coupons', orderRoutes);        // Coupon validate actions
 app.use('/api/orders', orderRoutes);         // Order checkouts, payments, and histories
 app.use('/api/admin', adminRoutes);          // Dashboard metrics and administrative edits
 app.use('/api/public', publicRoutes);        // Blog chronicle lists, testimonials, contact submit
+app.use('/api/support', supportRoutes);      // Order support and customer help tickets
 
 // 6. Global Error Handling Middleware
 app.use((err, req, res, next) => {

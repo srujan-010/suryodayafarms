@@ -5,11 +5,13 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useModalStore } from '../store/useModalStore';
 import { useFeedbackStore } from '../store/useFeedbackStore';
 import EmptyState from '../components/EmptyState';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FiHome, 
   FiShoppingBag, 
   FiTruck, 
-  FiUsers, 
+  FiUsers,
+  FiUser, 
   FiTag, 
   FiBarChart2, 
   FiSettings, 
@@ -23,6 +25,7 @@ import {
   FiImage, 
   FiLayers, 
   FiEye,
+  FiEyeOff,
   FiFileText,
   FiLayout,
   FiArrowUp,
@@ -35,7 +38,8 @@ import {
   FiTrendingUp,
   FiChevronDown,
   FiChevronUp,
-  FiMoreVertical
+  FiMoreVertical,
+  FiArrowLeft
 } from 'react-icons/fi';
 import { GiSun } from 'react-icons/gi';
 import api from '../utils/api';
@@ -68,6 +72,19 @@ export default function AdminDashboard() {
   // Custom promise-based Modal
   const modal = useModalStore();
 
+  // Helper for Indian Standard Time (IST) operations
+  const getISTDate = (dateInput) => {
+    if (!dateInput) return new Date();
+    const date = new Date(dateInput);
+    const localOffset = date.getTimezoneOffset();
+    return new Date(date.getTime() + (330 + localOffset) * 60000);
+  };
+
+  const getISTTodayStart = () => {
+    const nowIST = getISTDate(new Date());
+    return new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate());
+  };
+
   // Global feedback loading state
   const { isLoading: isGlobalLoading } = useFeedbackStore();
 
@@ -83,6 +100,13 @@ export default function AdminDashboard() {
   const [isSavingShipment, setIsSavingShipment] = useState({});
   const [expandedOrders, setExpandedOrders] = useState({});
 
+  // CRM Module States
+  const [crmSearchQuery, setCrmSearchQuery] = useState('');
+  const [crmFilterSegment, setCrmFilterSegment] = useState('all');
+  const [crmViewMode, setCrmViewMode] = useState('card');
+  const [selectedCrmCustomer, setSelectedCrmCustomer] = useState(null);
+  const [isCrmDrawerOpen, setIsCrmDrawerOpen] = useState(false);
+
   const [settingsForm, setSettingsForm] = useState({
     companyName: '',
     brandName: '',
@@ -95,7 +119,10 @@ export default function AdminDashboard() {
     socialTwitter: '',
     socialFacebook: '',
     socialInstagram: '',
-    socialYoutube: ''
+    socialYoutube: '',
+    freeDeliveryThreshold: '',
+    shippingCharge: '',
+    serviceableStates: ''
   });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState('');
@@ -112,8 +139,20 @@ export default function AdminDashboard() {
     core: false,
     marketing: false,
     content: false,
-    config: false
+    config: false,
+    support: false
   });
+
+  // Support Tickets Admin CRM States
+  const [supportTickets, setSupportTickets] = useState([]);
+  const [selectedSupportTicket, setSelectedSupportTicket] = useState(null);
+  const [adminReplyText, setAdminReplyText] = useState('');
+  const [adminReplyImage, setAdminReplyImage] = useState(null);
+  const [isSubmittingAdminReply, setIsSubmittingAdminReply] = useState(false);
+  const [adminReplyError, setAdminReplyError] = useState(null);
+  const [supportSearchQuery, setSupportSearchQuery] = useState('');
+  const [supportStatusFilter, setSupportStatusFilter] = useState('ALL');
+  const [supportPriorityFilter, setSupportPriorityFilter] = useState('ALL');
 
   // Orders tab search and filter states for enterprise logistics panel
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
@@ -305,6 +344,125 @@ export default function AdminDashboard() {
     }
   };
 
+  // Support Tickets Admin CRM Helpers
+  const fetchAdminSupportTickets = async () => {
+    try {
+      const response = await api.get(`/support/admin/tickets?status=${supportStatusFilter}&priority=${supportPriorityFilter}&search=${supportSearchQuery}`);
+      if (response.success && response.tickets) {
+        setSupportTickets(response.tickets);
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin support tickets:', err);
+    }
+  };
+
+  const fetchAdminTicketDetails = async (ticketId, isSilent = false) => {
+    try {
+      const response = await api.get(`/support/admin/tickets/${ticketId}`);
+      if (response.success && response.ticket) {
+        setSelectedSupportTicket(response.ticket);
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin ticket details:', err);
+    }
+  };
+
+  const handleUpdateTicketStatusOrPriority = async (ticketId, status, priority) => {
+    try {
+      const response = await api.put(`/support/admin/tickets/${ticketId}`, { status, priority });
+      if (response.success) {
+        await fetchAdminTicketDetails(ticketId);
+        fetchAdminSupportTickets();
+      }
+    } catch (err) {
+      console.error('Failed to update ticket status/priority:', err);
+    }
+  };
+
+  const handleAdminSendReply = async (e) => {
+    e.preventDefault();
+    if (!adminReplyText.trim() && !adminReplyImage) return;
+
+    setIsSubmittingAdminReply(true);
+    setAdminReplyError(null);
+
+    try {
+      let finalImageUrl = null;
+      if (adminReplyImage) {
+        const uploadRes = await api.post('/auth/upload-cloudinary', {
+          image: adminReplyImage,
+          folder: 'tickets'
+        });
+        if (uploadRes.success && uploadRes.url) {
+          finalImageUrl = uploadRes.url;
+        } else {
+          throw new Error(uploadRes.message || 'Image upload failed');
+        }
+      }
+
+      const response = await api.post(`/support/admin/tickets/${selectedSupportTicket.id}/messages`, {
+        message: adminReplyText,
+        imageUrl: finalImageUrl
+      });
+
+      if (response.success) {
+        setAdminReplyText('');
+        setAdminReplyImage(null);
+        await fetchAdminTicketDetails(selectedSupportTicket.id);
+        fetchAdminSupportTickets();
+      } else {
+        throw new Error(response.message || 'Failed to send admin reply');
+      }
+    } catch (err) {
+      setAdminReplyError(err.message || 'Failed to send reply.');
+    } finally {
+      setIsSubmittingAdminReply(false);
+    }
+  };
+
+  const handleAdminReplyImageChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setAdminReplyError('Please upload an image file.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setAdminReplyError('Image size should be less than 5MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAdminReplyImage(reader.result);
+      setAdminReplyError(null);
+    };
+    reader.onerror = () => {
+      setAdminReplyError('Failed to read file.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'support-tickets') {
+      fetchAdminSupportTickets();
+    }
+  }, [activeTab, supportStatusFilter, supportPriorityFilter, supportSearchQuery]);
+
+  useEffect(() => {
+    let interval = null;
+    if (selectedSupportTicket && activeTab === 'support-tickets') {
+      interval = setInterval(() => {
+        fetchAdminTicketDetails(selectedSupportTicket.id, true);
+      }, 5000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [selectedSupportTicket, activeTab]);
+
   const handlePromoteReview = async (review) => {
     const confirm = await modal.confirm(
       'Promote to Testimonial',
@@ -430,7 +588,10 @@ export default function AdminDashboard() {
         socialTwitter: settings.socialTwitter || '',
         socialFacebook: settings.socialFacebook || '',
         socialInstagram: settings.socialInstagram || '',
-        socialYoutube: settings.socialYoutube || ''
+        socialYoutube: settings.socialYoutube || '',
+        freeDeliveryThreshold: settings.freeDeliveryThreshold || '2',
+        shippingCharge: settings.shippingCharge || '80',
+        serviceableStates: settings.serviceableStates || 'Telangana, Andhra Pradesh'
       });
     }
   }, [settings]);
@@ -564,6 +725,11 @@ export default function AdminDashboard() {
   const [previewDeviceMode, setPreviewDeviceMode] = useState('desktop');
   const [selectedCategoryAssistId, setSelectedCategoryAssistId] = useState('');
 
+  const [expandedSection, setExpandedSection] = useState(null);
+  const [sectionTitleInput, setSectionTitleInput] = useState('');
+  const [sectionSubtitleInput, setSectionSubtitleInput] = useState('');
+  const [sectionBadgeInput, setSectionBadgeInput] = useState('');
+
   const handleCategoryAssistChange = (catId) => {
     setSelectedCategoryAssistId(catId);
     if (!catId) return;
@@ -685,6 +851,7 @@ export default function AdminDashboard() {
     seoDescription: '',
     seoKeywords: '',
     image: '',
+    images: ['', '', '', ''],
     variants: []
   });
 
@@ -704,8 +871,19 @@ export default function AdminDashboard() {
     description: '',
     image: '',
     seoTitle: '',
-    seoDescription: ''
+    seoDescription: '',
+    isVisible: true,
+    homepageVisible: true,
+    isFeatured: false
   });
+
+  const [catSearchQuery, setCatSearchQuery] = useState('');
+  const [catHomepageFilter, setCatHomepageFilter] = useState('all'); // all, visible, hidden
+  const [catSizeFilter, setCatSizeFilter] = useState('all'); // all, empty, active
+  const [catSortBy, setCatSortBy] = useState('name-asc'); // name-asc, name-desc, products-desc, products-asc, updated-desc, updated-asc
+
+  const [activeAnalyticsCategory, setActiveAnalyticsCategory] = useState(null);
+  const [activePreviewCategory, setActivePreviewCategory] = useState(null);
 
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
   const [categoryDetails, setCategoryDetails] = useState(null);
@@ -714,6 +892,15 @@ export default function AdminDashboard() {
   const [selectedProductIdsToAssign, setSelectedProductIdsToAssign] = useState([]);
   const [assignSearchQuery, setAssignSearchQuery] = useState('');
   const [categoryProductSearchQuery, setCategoryProductSearchQuery] = useState('');
+
+  const scrollToTop = () => {
+    const mainEl = document.getElementById('admin-main-content');
+    if (mainEl) {
+      mainEl.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   // Verify auth session on mount
   useEffect(() => {
@@ -774,6 +961,14 @@ export default function AdminDashboard() {
       setSelectedReviewProductId(parts[parts.length - 1]);
     } else if (path.endsWith('/testimonials')) {
       setActiveTab('testimonials');
+    } else if (path.endsWith('/support-tickets')) {
+      setActiveTab('support-tickets');
+      setSelectedSupportTicket(null);
+    } else if (path.includes('/support-tickets/')) {
+      setActiveTab('support-tickets');
+      const parts = path.split('/');
+      const ticketId = parts[parts.length - 1];
+      fetchAdminTicketDetails(ticketId);
     }
   }, [location.pathname]);
 
@@ -809,7 +1004,43 @@ export default function AdminDashboard() {
   const fetchHomepageCMSData = async () => {
     try {
       const heroResponse = await api.get('/admin/homepage/hero');
-      setHomepageHeroes(heroResponse.heroes || []);
+      const fetchedHeroes = heroResponse.heroes || [];
+      setHomepageHeroes(fetchedHeroes);
+
+      if (fetchedHeroes.length > 0 && (!heroForm.id || !isEditingHero)) {
+        const hr = fetchedHeroes[0];
+        setHeroForm({
+          id: hr.id,
+          trustBadgeText: hr.trustBadgeText || '',
+          headingLine1: hr.headingLine1 || '',
+          headingHighlight: hr.headingHighlight || '',
+          headingLine2: hr.headingLine2 || '',
+          description: hr.description || '',
+          bulletOne: hr.bulletOne || '',
+          bulletTwo: hr.bulletTwo || '',
+          bulletThree: hr.bulletThree || '',
+          bulletFour: hr.bulletFour || '',
+          primaryButtonText: hr.primaryButtonText || '',
+          primaryButtonLink: hr.primaryButtonLink || '',
+          secondaryButtonText: hr.secondaryButtonText || '',
+          secondaryButtonLink: hr.secondaryButtonLink || '',
+          promoText: hr.promoText || '',
+          heroImage: hr.heroImage || '',
+          featuredProductId: hr.featuredProductId || '',
+          offerBadgeText: hr.offerBadgeText || '',
+          floatingBadgeTitle: hr.floatingBadgeTitle || '',
+          floatingBadgeSubtitle: hr.floatingBadgeSubtitle || '',
+          slideOrder: hr.slideOrder || 0,
+          isFeatured: !!hr.isFeatured,
+          isActive: hr.isActive,
+          cropX: hr.cropX,
+          cropY: hr.cropY,
+          cropWidth: hr.cropWidth,
+          cropHeight: hr.cropHeight,
+          zoom: hr.zoom || 1,
+          aspectRatio: hr.aspectRatio || ''
+        });
+      }
 
       const collResponse = await api.get('/admin/homepage/collections');
       const allColls = collResponse.collections || [];
@@ -1048,18 +1279,38 @@ export default function AdminDashboard() {
   };
 
   const handleMoveCollection = async (index, direction) => {
+    // index is the index inside the signatureCollections list
+    const sigIndices = [];
+    const sigItems = [];
+    homepageCollections.forEach((item, idx) => {
+      let isPromo = false;
+      if (item.description && item.description.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(item.description);
+          isPromo = !!parsed.isPromoCategory;
+        } catch(e) {}
+      }
+      if (!isPromo) {
+        sigIndices.push(idx);
+        sigItems.push(item);
+      }
+    });
+
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= sigItems.length) return;
+
+    const temp = sigItems[index];
+    sigItems[index] = sigItems[targetIndex];
+    sigItems[targetIndex] = temp;
+
     const updatedList = [...homepageCollections];
-    if (direction === 'up' && index > 0) {
-      const temp = updatedList[index];
-      updatedList[index] = updatedList[index - 1];
-      updatedList[index - 1] = temp;
-    } else if (direction === 'down' && index < updatedList.length - 1) {
-      const temp = updatedList[index];
-      updatedList[index] = updatedList[index + 1];
-      updatedList[index + 1] = temp;
-    } else {
-      return;
-    }
+    sigItems.forEach((item, idx) => {
+      const origIdx = sigIndices[idx];
+      updatedList[origIdx] = {
+        ...item,
+        sortOrder: idx
+      };
+    });
 
     setHomepageCollections(updatedList);
 
@@ -1158,7 +1409,7 @@ export default function AdminDashboard() {
   const handleSeedPromoCategories = async () => {
     const confirmed = await modal.confirm(
       'Seed Vedic Category Presets?',
-      'This will populate your homepage categories strip with the 6 default luxury cinematic showcases (Ghee, Oils, Pickles, Spices, Pulses, Grains). Continue?',
+      'This will populate your homepage categories strip with the 6 default luxury cinematic showcases (Ghee, Oils, Spices, Grains, Millets, Honey). Continue?',
       'question',
       'Seed Presets',
       'Cancel'
@@ -1173,7 +1424,7 @@ export default function AdminDashboard() {
           image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780167272/WhatsApp_Image_2026-05-30_at_9.07.15_PM_yifcop.jpg",
           mobileImage: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780167272/WhatsApp_Image_2026-05-30_at_9.07.15_PM_yifcop.jpg",
           ctaText: "Shop Collection",
-          categorySlug: "ghee",
+          categorySlug: "a2-ghee",
           overlayPosition: "bottom-left",
           overlayDarkness: 0.5,
           textColorTheme: "light",
@@ -1200,12 +1451,12 @@ export default function AdminDashboard() {
           cornerRadius: "3xl"
         },
         {
-          title: "Traditional Pickles",
-          subtitle: "Homemade sun-matured seasonal pickles",
-          image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780221361/ChatGPT_Image_May_31_2026_03_25_47_PM_ybaomj.png",
-          mobileImage: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780221361/ChatGPT_Image_May_31_2026_03_25_47_PM_ybaomj.png",
+          title: "Stone Ground Spices",
+          subtitle: "Pure native farm-grown raw spices",
+          image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780212274/ChatGPT_Image_May_31_2026_12_54_22_PM_wx85ub.png",
+          mobileImage: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780212274/ChatGPT_Image_May_31_2026_12_54_22_PM_wx85ub.png",
           ctaText: "Shop Collection",
-          categorySlug: "pickles",
+          categorySlug: "stone-ground-spices",
           overlayPosition: "bottom-left",
           overlayDarkness: 0.5,
           textColorTheme: "light",
@@ -1216,12 +1467,12 @@ export default function AdminDashboard() {
           cornerRadius: "3xl"
         },
         {
-          title: "Stone Ground Spices",
-          subtitle: "Pure native farm-grown raw spices",
-          image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780212274/ChatGPT_Image_May_31_2026_12_54_22_PM_wx85ub.png",
-          mobileImage: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780212274/ChatGPT_Image_May_31_2026_12_54_22_PM_wx85ub.png",
+          title: "Organic Grains",
+          subtitle: "Premium sun-dried native grains",
+          image: "https://images.unsplash.com/photo-1574316071802-0d684efa7bf5?auto=format&fit=crop&q=80&w=800",
+          mobileImage: "https://images.unsplash.com/photo-1574316071802-0d684efa7bf5?auto=format&fit=crop&q=80&w=800",
           ctaText: "Shop Collection",
-          categorySlug: "spices",
+          categorySlug: "organic-grains",
           overlayPosition: "bottom-left",
           overlayDarkness: 0.5,
           textColorTheme: "light",
@@ -1232,12 +1483,12 @@ export default function AdminDashboard() {
           cornerRadius: "3xl"
         },
         {
-          title: "Pulses",
-          subtitle: "Naturally grown unpolished high-protein dals",
-          image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780212045/ChatGPT_Image_May_31_2026_12_50_35_PM_yoe8jf.png",
-          mobileImage: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780212045/ChatGPT_Image_May_31_2026_12_50_35_PM_yoe8jf.png",
+          title: "Ancient Millets",
+          subtitle: "Ancient, organic, and fiber-rich millet grains",
+          image: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800",
+          mobileImage: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800",
           ctaText: "Shop Collection",
-          categorySlug: "pulses",
+          categorySlug: "ancient-millets",
           overlayPosition: "bottom-left",
           overlayDarkness: 0.6,
           textColorTheme: "light",
@@ -1248,12 +1499,12 @@ export default function AdminDashboard() {
           cornerRadius: "3xl"
         },
         {
-          title: "Rice & Grains",
-          subtitle: "Premium organic staples",
-          image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780221260/ChatGPT_Image_May_31_2026_03_23_58_PM_pq6qnn.png",
-          mobileImage: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780221260/ChatGPT_Image_May_31_2026_03_23_58_PM_pq6qnn.png",
+          title: "Raw Honey & Sweeteners",
+          subtitle: "Chemical-free natural forest sweeteners",
+          image: "https://images.unsplash.com/photo-1608408881648-a1c97a5ee2e3?auto=format&fit=crop&q=80&w=800",
+          mobileImage: "https://images.unsplash.com/photo-1608408881648-a1c97a5ee2e3?auto=format&fit=crop&q=80&w=800",
           ctaText: "Shop Collection",
-          categorySlug: "rice-grains",
+          categorySlug: "raw-honey-sweeteners",
           overlayPosition: "bottom-left",
           overlayDarkness: 0.5,
           textColorTheme: "light",
@@ -1376,6 +1627,43 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleExpandSection = (sectName) => {
+    if (expandedSection === sectName) {
+      setExpandedSection(null);
+    } else {
+      setExpandedSection(sectName);
+      setSectionTitleInput(settings[`homepage_section_title_${sectName}`] || '');
+      setSectionSubtitleInput(settings[`homepage_section_subtitle_${sectName}`] || '');
+      setSectionBadgeInput(settings[`homepage_section_badge_${sectName}`] || '');
+    }
+  };
+
+  const handleSaveSectionTexts = async (sectName) => {
+    try {
+      const payload = {
+        [`homepage_section_title_${sectName}`]: sectionTitleInput,
+        [`homepage_section_subtitle_${sectName}`]: sectionSubtitleInput,
+        [`homepage_section_badge_${sectName}`]: sectionBadgeInput
+      };
+      await updateSettings(payload);
+      modal.alert('Success', 'Section content overrides saved successfully.', 'success');
+      setExpandedSection(null);
+    } catch (err) {
+      modal.alert('Save Failed', err.message, 'error');
+    }
+  };
+
+  const handleToggleSectionVisibility = async (sectName, currentVisible) => {
+    try {
+      const newVal = currentVisible ? 'false' : 'true';
+      await updateSettings({
+        [`homepage_section_visible_${sectName}`]: newVal
+      });
+    } catch (err) {
+      modal.alert('Update Failed', err.message, 'error');
+    }
+  };
+
   const resetCollectionForm = () => {
     setCollectionForm({
       id: '',
@@ -1400,7 +1688,7 @@ export default function AdminDashboard() {
         description: "Slowly melted over firewood logs from organic hand-churned butter of grass-fed desi Gir Cows.",
         image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780167272/WhatsApp_Image_2026-05-30_at_9.07.15_PM_yifcop.jpg",
         ctaText: "Explore Ghee Collection",
-        categorySlug: "ghee",
+        categorySlug: "a2-ghee",
         isActive: true
       },
       oils: {
@@ -1412,13 +1700,13 @@ export default function AdminDashboard() {
         categorySlug: "cold-pressed-oils",
         isActive: true
       },
-      pickles: {
-        title: "Authentic Andhra Pickles",
+      spices: {
+        title: "Stone Ground Spices",
         badge: "STONE GROUND",
-        description: "Homemade traditional pickles prepared using traditional recipes and natural ingredients.",
-        image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780221361/ChatGPT_Image_May_31_2026_03_25_47_PM_ybaomj.png",
-        ctaText: "Discover Pickles",
-        categorySlug: "pickles",
+        description: "Pure native farm-grown spices, stone-ground at low temperatures to preserve natural essential oils and intense aroma.",
+        image: "https://res.cloudinary.com/dixbhnqnf/image/upload/v1780212274/ChatGPT_Image_May_31_2026_12_54_22_PM_wx85ub.png",
+        ctaText: "Discover Spices",
+        categorySlug: "stone-ground-spices",
         isActive: true
       }
     };
@@ -1575,6 +1863,7 @@ export default function AdminDashboard() {
     if (!productForm.price || isNaN(productForm.price)) errors.price = 'Valid product price is required';
     if (productForm.inventory === undefined || productForm.inventory === '') errors.inventory = 'Stock quantity is required';
     if (!productForm.categoryIds || productForm.categoryIds.length === 0) errors.categoryIds = 'Please select at least one category';
+    if (!productForm.images?.[0] && !productForm.image) errors.images = 'Main product image is required';
 
     if (Object.keys(errors).length > 0) {
       setProductFormErrors(errors);
@@ -1674,7 +1963,7 @@ export default function AdminDashboard() {
         await api.post('/admin/categories', categoryForm);
       }
       setShowCategoryModal(false);
-      setCategoryForm({ id: '', name: '', description: '', image: '', seoTitle: '', seoDescription: '' });
+      setCategoryForm({ id: '', name: '', description: '', image: '', seoTitle: '', seoDescription: '', isVisible: true, homepageVisible: true, isFeatured: false });
       fetchCategories();
       fetchAnalytics();
       if (selectedCategoryId) {
@@ -1685,6 +1974,26 @@ export default function AdminDashboard() {
     } catch (err) {
       useFeedbackStore.getState().hideLoader();
       useFeedbackStore.getState().showToast(`❌ Failed to save category: ${err.message}`, 'error');
+    }
+  };
+
+  const handleToggleHomepageVisible = async (cat) => {
+    try {
+      useFeedbackStore.getState().showLoader('Updating visibility...');
+      await api.put(`/admin/categories/${cat.id}`, {
+        ...cat,
+        homepageVisible: !cat.homepageVisible
+      });
+      fetchCategories();
+      fetchAnalytics();
+      if (selectedCategoryId === cat.id) {
+        fetchCategoryDetails(cat.id);
+      }
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast('✅ Visibility updated', 'success');
+    } catch (err) {
+      useFeedbackStore.getState().hideLoader();
+      useFeedbackStore.getState().showToast(`❌ Failed to update visibility: ${err.message}`, 'error');
     }
   };
 
@@ -1893,6 +2202,7 @@ export default function AdminDashboard() {
       seoDescription: '',
       seoKeywords: '',
       image: '',
+      images: ['', '', '', ''],
       variants: []
     });
   };
@@ -1952,6 +2262,19 @@ export default function AdminDashboard() {
       seoDescription: prod.seoDescription || '',
       seoKeywords: prod.seoKeywords || '',
       image: prod.images?.length > 0 ? prod.images[0].url : prod.image || '',
+      images: prod.images && prod.images.length > 0
+        ? [
+            prod.images[0]?.url || '',
+            prod.images[1]?.url || '',
+            prod.images[2]?.url || '',
+            prod.images[3]?.url || ''
+          ]
+        : [
+            prod.image || '',
+            prod.hoverImage || '',
+            '',
+            ''
+          ],
       variants: prod.variants || []
     });
     setShowProductModal(true);
@@ -1969,7 +2292,8 @@ export default function AdminDashboard() {
       settings: 'settings',
       coupons: 'coupons',
       reviews: 'reviews',
-      testimonials: 'testimonials'
+      testimonials: 'testimonials',
+      'support-tickets': 'support-tickets'
     };
     setIsMobileSidebarOpen(false);
     navigate(`/admin/${routeMap[tabId]}`);
@@ -2613,49 +2937,95 @@ export default function AdminDashboard() {
   if (!isAdminAuthenticated) return null;
 
   return (
-    <div className="min-h-screen bg-[#F7F4ED] text-[#37411A] flex flex-col lg:flex-row relative font-sans selection:bg-[#B8833E] selection:text-[#F7F4ED] admin-dashboard-container">
+    <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-[#F7F4ED] text-[#37411A] flex flex-col lg:flex-row relative font-sans selection:bg-[#B8833E] selection:text-[#F7F4ED] admin-dashboard-container">
       
       {/* Dynamic scrollbars style */}
       <style dangerouslySetInnerHTML={{__html: `
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
-        .custom-scroll::-webkit-scrollbar-track { background: #F7F4ED; }
+        .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #EDE7D9; border-radius: 10px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #B8833E; }
       `}} />
 
-      {/* 1. LIGHT EARTHY SIDEBAR */}
-      <aside className="w-full lg:w-[260px] bg-[#F3EFE6] border-b lg:border-b-0 lg:border-r border-[#EDE7D9] flex flex-col shrink-0 p-6 z-20 transition-all duration-300 relative lg:h-screen lg:sticky lg:top-0">
+      {/* Backdrop for mobile drawer */}
+      <AnimatePresence>
+        {isMobileSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="fixed inset-0 bg-[#2F3B0C]/40 backdrop-blur-xs z-40 lg:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Mobile Top Navigation Bar */}
+      <header className="lg:hidden w-full bg-[#F3EFE6] border-b border-[#EDE7D9] h-16 px-4 flex items-center justify-between sticky top-0 z-30 shrink-0 select-none">
+        <div className="flex items-center space-x-3">
+          <img 
+            src="https://i.ibb.co/Pz01P9Y5/Whats-App-Image-2026-05-29-at-6-51-48-PM-removebg-preview.png" 
+            alt="Suryodaya Farms Logo" 
+            className="w-10 h-10 object-contain"
+          />
+          <div className="flex flex-col text-left">
+            <span className="font-serif text-xs font-bold tracking-widest text-[#37411A] uppercase leading-none">
+              Suryodaya
+            </span>
+            <span className="font-sans text-[7px] font-extrabold tracking-widest text-[#B8833E] uppercase mt-0.5 leading-none">
+              ADMIN PORTAL
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={() => setIsMobileSidebarOpen(true)}
+          className="p-2 rounded-xl bg-white hover:bg-stone-50 border border-[#EDE7D9] text-[#4E641A] transition-all cursor-pointer flex items-center justify-center shadow-xxs"
+        >
+          {/* Hamburger Icon */}
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      </header>
+
+      {/* 1. LIGHT EARTHY SIDEBAR (Drawer on mobile, static sidebar on desktop) */}
+      <aside className={`fixed top-0 bottom-0 left-0 w-[280px] bg-[#F3EFE6] border-r border-[#EDE7D9] flex flex-col shrink-0 p-6 z-50 transition-transform duration-300 ease-in-out ${
+        isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      } lg:translate-x-0 lg:static lg:w-[260px] lg:h-screen lg:sticky lg:top-0 lg:overflow-y-auto lg:overflow-x-hidden custom-scroll shadow-2xl lg:shadow-none`}>
         
-        {/* Logo Branding & Mobile Hamburger */}
-        <div className="flex items-center justify-between pb-4 border-b border-[#EDE7D9] lg:border-b-0 lg:pb-0 lg:mb-4">
+        {/* Logo Branding & Drawer Close Button */}
+        <div className="flex items-center justify-between pb-4 border-b border-[#EDE7D9] mb-4">
           <div className="flex items-center space-x-3">
             <img 
               src="https://i.ibb.co/Pz01P9Y5/Whats-App-Image-2026-05-29-at-6-51-48-PM-removebg-preview.png" 
               alt="Suryodaya Farms Logo" 
-              className="w-14 h-14 object-contain"
+              className="w-12 h-12 object-contain"
             />
             <div className="flex flex-col text-left">
-              <span className="font-serif text-sm font-bold tracking-widest text-[#37411A] uppercase leading-none">
+              <span className="font-serif text-xs font-bold tracking-widest text-[#37411A] uppercase leading-none">
                 Suryodaya
               </span>
-              <span className="font-sans text-[8px] font-extrabold tracking-widest text-[#B8833E] uppercase mt-1 leading-none">
+              <span className="font-sans text-[7px] font-extrabold tracking-widest text-[#B8833E] uppercase mt-0.5 leading-none">
                 ADMIN PORTAL
               </span>
             </div>
           </div>
 
-          {/* Mobile/Tablet navigation toggle button */}
+          {/* Close button for drawer (mobile only) */}
           <button
-            onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-            className="lg:hidden p-2.5 rounded-xl bg-white hover:bg-stone-50 border border-[#EDE7D9] text-[#4E641A] transition-all cursor-pointer flex items-center justify-center shadow-xxs"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="lg:hidden p-2 rounded-xl bg-white hover:bg-stone-50 border border-[#EDE7D9] text-[#4E641A] transition-all cursor-pointer flex items-center justify-center shadow-xxs"
           >
-            {isMobileSidebarOpen ? <FiChevronUp className="w-4 h-4" /> : <FiChevronDown className="w-4 h-4" />}
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
-        {/* Navigation & Logout Container (Overlay on Mobile, normal flex layout on Desktop) */}
-        <div className={`${isMobileSidebarOpen ? 'flex absolute left-0 right-0 top-[85px] bg-[#F3EFE6] border-b border-[#EDE7D9] px-6 pb-6 pt-4 shadow-xl z-50 flex-col gap-6 max-h-[calc(100vh-100px)] overflow-y-auto' : 'hidden'} lg:flex lg:flex-col lg:justify-between lg:flex-grow lg:relative lg:top-0 lg:bg-transparent lg:border-none lg:p-0 lg:shadow-none lg:block lg:mt-6`}>
+        {/* Navigation & Logout Container */}
+        <div className="flex flex-col justify-between flex-grow mt-4 overflow-y-auto no-scrollbar relative">
           
           <div className="space-y-6 text-left">
             
@@ -2859,10 +3229,67 @@ export default function AdminDashboard() {
               )}
             </div>
 
+            {/* Customer Support Group */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setCollapsedGroups(prev => ({ ...prev, support: !prev.support }))}
+                className="w-full flex items-center justify-between text-[8px] font-extrabold tracking-widest text-[#B8833E]/70 uppercase mb-2 px-1 bg-transparent border-none cursor-pointer hover:text-[#4E641A] transition select-none"
+              >
+                <span>Customer Support</span>
+                {collapsedGroups.support ? <FiChevronDown className="w-2.5 h-2.5" /> : <FiChevronUp className="w-2.5 h-2.5" />}
+              </button>
+              
+              {!collapsedGroups.support && (
+                <nav className="space-y-1 animate-fade-in">
+                  {[
+                    { id: 'support-tickets', label: 'Support Tickets', icon: FiMessageSquare },
+                  ].map((tab) => {
+                    const isTabActive = activeTab === tab.id;
+                    
+                    const getTabBadge = () => {
+                      const count = supportTickets.filter(t => t.status === 'OPEN').length;
+                      if (count > 0) return count;
+                      return null;
+                    };
+                    const badgeCount = getTabBadge();
+
+                    return (
+                      <button
+                        type="button"
+                        key={tab.id}
+                        onClick={() => handleTabChange(tab.id)}
+                        className={`w-full flex items-center justify-between font-sans text-xs font-bold py-2.5 px-4 rounded-xl transition duration-350 relative group cursor-pointer border-none text-left ${
+                          isTabActive
+                            ? 'bg-[#4E641A] text-white shadow-md shadow-[#4E641A]/10 ring-1 ring-white/10'
+                            : 'text-stone-600 hover:bg-[#EDE7D9]/50 hover:text-[#37411A] bg-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <tab.icon className={`w-4.5 h-4.5 ${isTabActive ? 'text-[#B8833E]' : 'text-stone-400 group-hover:text-[#4E641A]'}`} />
+                          <span className="tracking-wider uppercase text-[9px]">{tab.label}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {badgeCount && (
+                            <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded-full ${isTabActive ? 'bg-[#B8833E] text-white' : 'bg-[#EDE7D9] text-[#4E641A]'}`}>
+                              {badgeCount}
+                            </span>
+                          )}
+                          {isTabActive && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#B8833E] shadow-lg animate-pulse" />
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </nav>
+              )}
+            </div>
+
           </div>
 
           {/* Admin User info footer & Logout */}
-          <div className="pt-4 border-t border-[#EDE7D9] space-y-4 text-left lg:mt-auto">
+          <div className="pt-4 border-t border-[#EDE7D9] space-y-4 text-left mt-auto">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 rounded-full bg-[#4E641A]/10 border border-[#EDE7D9] flex items-center justify-center font-serif font-bold text-xs text-[#4E641A] overflow-hidden shrink-0">
                 {adminUser?.avatarUrl ? (
@@ -2879,21 +3306,26 @@ export default function AdminDashboard() {
 
             <button
               onClick={handleAdminSignOut}
-              className="w-full flex items-center gap-3 py-3 px-4 rounded-xl bg-red-50 text-red-650 hover:bg-red-100 border border-red-200 transition cursor-pointer text-left font-sans text-xs font-bold select-none"
+              className="w-full flex items-center gap-3 py-3 px-4 rounded-xl bg-red-50 text-red-655 hover:bg-red-100 border border-red-200 transition cursor-pointer text-left font-sans text-xs font-bold select-none"
             >
               <FiLogOut className="w-4 h-4" />
               <span className="tracking-wider uppercase text-[9px]">Secure Logout</span>
             </button>
           </div>
-
         </div>
       </aside>
 
       {/* 2. DYNAMIC WORKSPACE PANEL */}
-      <main className="flex-grow bg-[#F7F4ED] p-5 md:p-8 z-10 flex flex-col justify-start overflow-x-hidden text-left">
+      <main id="admin-main-content" className="flex-grow bg-[#F7F4ED] p-5 md:p-8 z-10 flex flex-col justify-start lg:h-screen lg:overflow-y-auto lg:overflow-x-hidden custom-scroll text-left">
         
         {/* TAB 1: OVERVIEW */}
         {activeTab === 'overview' && (() => {
+          // Timezone and date helpers for Indian Standard Time (IST)
+          const nowIST = getISTDate(new Date());
+          const startOfTodayIST = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate());
+          const startOfSevenDaysAgoIST = new Date(startOfTodayIST.getTime() - 7 * 24 * 60 * 60 * 1000);
+          const startOfFourteenDaysAgoIST = new Date(startOfTodayIST.getTime() - 14 * 24 * 60 * 60 * 1000);
+
           // Calculations
           const totalRevenue = orders.reduce((sum, o) => o.status !== 'CANCELLED' ? sum + Number(o.totalAmount || 0) : sum, 0);
           const pendingShipments = orders.filter(o => o.status === 'PENDING').length;
@@ -2905,10 +3337,43 @@ export default function AdminDashboard() {
           // COD Revenue
           const codRevenue = orders.reduce((sum, o) => (o.status !== 'CANCELLED' && (o.paymentMethod || '').toUpperCase() === 'COD') ? sum + Number(o.totalAmount || 0) : sum, 0);
           const codRatio = orders.length > 0 ? Math.round((codOrders / orders.length) * 100) : 0;
+
+          // Real-time Trend calculations based on IST
+          const thisWeekRevenue = orders.reduce((sum, o) => {
+            if (o.status === 'CANCELLED') return sum;
+            const oIST = getISTDate(o.createdAt);
+            return oIST >= startOfSevenDaysAgoIST ? sum + Number(o.totalAmount || 0) : sum;
+          }, 0);
+
+          const prevWeekRevenue = orders.reduce((sum, o) => {
+            if (o.status === 'CANCELLED') return sum;
+            const oIST = getISTDate(o.createdAt);
+            return (oIST >= startOfFourteenDaysAgoIST && oIST < startOfSevenDaysAgoIST) ? sum + Number(o.totalAmount || 0) : sum;
+          }, 0);
+
+          const getSalesTrendLabel = () => {
+            if (prevWeekRevenue === 0) {
+              if (thisWeekRevenue === 0) return 'No sales this week';
+              return `↑ 100% this week`;
+            }
+            const pct = Math.round(((thisWeekRevenue - prevWeekRevenue) / prevWeekRevenue) * 100);
+            if (pct >= 0) return `↑ ${pct}% this week`;
+            return `↓ ${Math.abs(pct)}% this week`;
+          };
+
+          const ordersToday = orders.filter(o => {
+            const oIST = getISTDate(o.createdAt);
+            return oIST >= startOfTodayIST;
+          }).length;
+
+          const customersToday = customers.filter(c => {
+            const cIST = getISTDate(c.createdAt);
+            return cIST >= startOfTodayIST;
+          }).length;
           
-          // Greeting
+          // Greeting using IST hours
           const getGreeting = () => {
-            const hrs = new Date().getHours();
+            const hrs = nowIST.getHours();
             const adminName = adminUser?.name || 'Aditya';
             if (hrs < 12) return `Good Morning, ${adminName} 🌱`;
             if (hrs < 17) return `Good Afternoon, ${adminName} 🌱`;
@@ -3036,13 +3501,38 @@ export default function AdminDashboard() {
           });
           const sortedFeed = feed.sort((a, b) => b.time - a.time).slice(0, 5);
 
-          // Best selling products (by calculating ordered quantities)
-          const bestSellers = [];
-          products.slice(0, 5).forEach(p => {
-            // Count occurrences or estimate based on visible tag
-            const salesCount = orders.filter(o => o.status !== 'CANCELLED').length + Math.floor(Math.random() * 10);
-            bestSellers.push({ ...p, salesCount });
+          // Best selling products (by calculating real-time ordered quantities)
+          const salesMap = {};
+          // Initialize sales count for all products in catalog
+          products.forEach(p => {
+            salesMap[p.id] = {
+              product: p,
+              salesCount: 0
+            };
           });
+
+          // Iterate through all orders that are not CANCELLED to sum quantities
+          orders.forEach(o => {
+            if (o.status === 'CANCELLED') return;
+            const items = o.orderItems || [];
+            items.forEach(item => {
+              const productId = item.productId || item.product?.id;
+              if (productId) {
+                if (!salesMap[productId]) {
+                  salesMap[productId] = {
+                    product: item.product || { id: productId, name: item.productName || 'Unknown Product' },
+                    salesCount: 0
+                  };
+                }
+                salesMap[productId].salesCount += (item.quantity || 0);
+              }
+            });
+          });
+
+          const bestSellers = Object.values(salesMap).map(({ product, salesCount }) => ({
+            ...product,
+            salesCount
+          }));
           const sortedBestSellers = bestSellers.sort((a, b) => b.salesCount - a.salesCount).slice(0, 4);
 
           // Quick actions tab navigation
@@ -3114,17 +3604,14 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Metrics cards grid */}
-              <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 select-none">
-                
-                <div className="bg-white border border-[#EDE7D9] rounded-2xl p-4 flex flex-col justify-between h-[130px] shadow-sm hover:shadow-md hover:border-[#4E641A]/20 transition-all duration-300">
+              {/*                 <div className="bg-white border border-[#EDE7D9] rounded-2xl p-4 flex flex-col justify-between h-[130px] shadow-sm hover:shadow-md hover:border-[#4E641A]/20 transition-all duration-300">
                   <div className="flex items-center justify-between text-stone-500">
                     <span className="text-[8px] font-extrabold tracking-widest uppercase text-stone-400">Total Sales</span>
                     <FiTrendingUp className="w-4 h-4 text-[#4E641A]" />
                   </div>
                   <div className="mt-2">
                     <span className="text-xl font-serif font-extrabold block text-[#2F3B0C]">₹{totalRevenue}</span>
-                    <span className="text-[8px] font-bold text-[#4E641A] uppercase tracking-widest block mt-1">↑ 14% this week</span>
+                    <span className="text-[8px] font-bold text-[#4E641A] uppercase tracking-widest block mt-1">{getSalesTrendLabel()}</span>
                   </div>
                   <svg className="w-full h-8 text-[#4E641A] opacity-60 mt-1" viewBox="0 0 100 30" preserveAspectRatio="none">
                     <path d="M 0 25 Q 20 15 40 22 T 80 5 T 100 12" fill="none" stroke="currentColor" strokeWidth="1.5" />
@@ -3138,7 +3625,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="mt-2">
                     <span className="text-xl font-serif font-extrabold block text-[#2F3B0C]">{orders.length}</span>
-                    <span className="text-[8px] font-bold text-[#B8833E] uppercase tracking-widest block mt-1">+{orders.filter(o => new Date(o.createdAt).toDateString() === new Date().toDateString()).length} new today</span>
+                    <span className="text-[8px] font-bold text-[#B8833E] uppercase tracking-widest block mt-1">+{ordersToday} new today</span>
                   </div>
                   <svg className="w-full h-8 text-[#B8833E] opacity-60 mt-1" viewBox="0 0 100 30" preserveAspectRatio="none">
                     <path d="M 0 20 Q 20 10 40 18 T 80 8 T 100 22" fill="none" stroke="currentColor" strokeWidth="1.5" />
@@ -3154,7 +3641,7 @@ export default function AdminDashboard() {
                     <span className="text-xl font-serif font-extrabold block text-[#2F3B0C]">{pendingShipments}</span>
                     <span className="text-[8px] font-bold text-red-500 uppercase tracking-widest block mt-1">↓ {pendingShipments === 0 ? 'All clear' : 'Needs attention'}</span>
                   </div>
-                  <svg className="w-full h-8 text-red-450 opacity-60 mt-1" viewBox="0 0 100 30" preserveAspectRatio="none">
+                  <svg className="w-full h-8 text-red-455 opacity-60 mt-1" viewBox="0 0 100 30" preserveAspectRatio="none">
                     <path d="M 0 12 L 20 12 Q 40 8 60 22 T 100 8" fill="none" stroke="currentColor" strokeWidth="1.5" />
                   </svg>
                 </div>
@@ -3166,7 +3653,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="mt-2">
                     <span className="text-xl font-serif font-extrabold block text-[#2F3B0C]">{totalCustomers}</span>
-                    <span className="text-[8px] font-bold text-stone-400 uppercase tracking-widest block mt-1">+4 profiles today</span>
+                    <span className="text-[8px] font-bold text-stone-400 uppercase tracking-widest block mt-1">+{customersToday} new today</span>
                   </div>
                   <svg className="w-full h-8 text-[#4E641A] opacity-60 mt-1" viewBox="0 0 100 30" preserveAspectRatio="none">
                     <path d="M 0 25 Q 20 22 40 18 T 80 10 T 100 5" fill="none" stroke="currentColor" strokeWidth="1.5" />
@@ -3180,7 +3667,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="mt-2">
                     <span className="text-xl font-serif font-extrabold block text-[#2F3B0C]">{activeProducts}</span>
-                    <span className="text-[8px] font-bold text-stone-400 uppercase tracking-widest block mt-1">Traceable origins</span>
+                    <span className="text-[8px] font-bold text-stone-400 uppercase tracking-widest block mt-1">{lowStockCount > 0 ? `${lowStockCount} running low` : 'All items in stock'}</span>
                   </div>
                   <svg className="w-full h-8 text-stone-400 opacity-40 mt-1" viewBox="0 0 100 30" preserveAspectRatio="none">
                     <path d="M 0 15 L 20 15 L 40 15 L 60 15 L 80 15 L 100 15" fill="none" stroke="currentColor" strokeWidth="1.5" />
@@ -3284,13 +3771,13 @@ export default function AdminDashboard() {
                                         <div className="space-y-1.5 text-left">
                                           <strong className="text-stone-400 uppercase tracking-widest text-[8px] block">Products Ordered</strong>
                                           <div className="space-y-1 font-medium">
-                                            {o.items?.map((item, idx) => (
+                                            {o.orderItems?.map((item, idx) => (
                                               <div key={idx} className="flex gap-2">
                                                 <span>• {item.productName || item.product?.name}</span>
                                                 <span className="text-stone-400 font-light">({item.quantity} x {item.weight || item.variant?.name || '500g'})</span>
                                               </div>
                                             ))}
-                                            {(!o.items || o.items.length === 0) && (
+                                            {(!o.orderItems || o.orderItems.length === 0) && (
                                               <span className="italic text-stone-400 font-light">Standard Organic Staples</span>
                                             )}
                                           </div>
@@ -3953,19 +4440,57 @@ export default function AdminDashboard() {
                   <div className="bg-white border border-stone-200 rounded-xl p-5 md:p-6 shadow-xs space-y-5 text-left">
                     <h4 className="text-sm font-semibold text-stone-900 border-b border-stone-100 pb-2">3. Media Assets</h4>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    {productFormErrors.images && (
+                      <span className="text-[10px] text-red-650 font-bold block mb-2 select-none">
+                        ⚠️ {productFormErrors.images}
+                      </span>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                       <UnifiedUploader
-                        value={productForm.image}
-                        onChange={(url) => setProductForm({ ...productForm, image: url })}
-                        label="Main Product Image"
+                        value={productForm.images?.[0] || ''}
+                        onChange={(url) => {
+                          const newImages = [...(productForm.images || ['', '', '', ''])];
+                          newImages[0] = url;
+                          setProductForm({ ...productForm, images: newImages, image: url });
+                        }}
+                        label="Main Product Image *"
                         aspectRatio={1}
                         folder="products"
                       />
 
                       <UnifiedUploader
-                        value={productForm.hoverImage}
-                        onChange={(url) => setProductForm({ ...productForm, hoverImage: url })}
-                        label="Optional Gallery Image (Hover)"
+                        value={productForm.images?.[1] || ''}
+                        onChange={(url) => {
+                          const newImages = [...(productForm.images || ['', '', '', ''])];
+                          newImages[1] = url;
+                          setProductForm({ ...productForm, images: newImages, hoverImage: url });
+                        }}
+                        label="Gallery Image 1"
+                        aspectRatio={1}
+                        folder="products"
+                      />
+
+                      <UnifiedUploader
+                        value={productForm.images?.[2] || ''}
+                        onChange={(url) => {
+                          const newImages = [...(productForm.images || ['', '', '', ''])];
+                          newImages[2] = url;
+                          setProductForm({ ...productForm, images: newImages });
+                        }}
+                        label="Gallery Image 2"
+                        aspectRatio={1}
+                        folder="products"
+                      />
+
+                      <UnifiedUploader
+                        value={productForm.images?.[3] || ''}
+                        onChange={(url) => {
+                          const newImages = [...(productForm.images || ['', '', '', ''])];
+                          newImages[3] = url;
+                          setProductForm({ ...productForm, images: newImages });
+                        }}
+                        label="Gallery Image 3"
                         aspectRatio={1}
                         folder="products"
                       />
@@ -4222,7 +4747,7 @@ export default function AdminDashboard() {
               {[
                 { label: 'Pending Shipments', value: orders.filter(o => o.status === 'PENDING').length, color: 'bg-amber-50 text-amber-700 border-amber-250', iconColor: 'text-amber-500' },
                 { label: 'In Transit Orders', value: orders.filter(o => ['SHIPPED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY'].includes(o.status)).length, color: 'bg-cyan-50 text-cyan-700 border-cyan-250', iconColor: 'text-cyan-500' },
-                { label: 'Delivered Today', value: orders.filter(o => o.status === 'DELIVERED').length, color: 'bg-green-50 text-green-700 border-green-250', iconColor: 'text-green-500' },
+                { label: 'Delivered Today', value: orders.filter(o => o.status === 'DELIVERED' && getISTDate(o.updatedAt || o.createdAt) >= getISTTodayStart()).length, color: 'bg-green-50 text-green-700 border-green-250', iconColor: 'text-green-500' },
                 { label: 'Cancelled Orders', value: orders.filter(o => o.status === 'CANCELLED').length, color: 'bg-red-50 text-red-700 border-red-250', iconColor: 'text-red-500' },
                 { label: 'COD Orders Base', value: orders.filter(o => o.paymentMethod === 'COD').length, color: 'bg-[#4E641A]/5 text-[#4E641A] border-[#4E641A]/20', iconColor: 'text-[#4E641A]' }
               ].map((kpi, idx) => (
@@ -5034,40 +5559,625 @@ export default function AdminDashboard() {
         )}
 
         {/* TAB 4: CUSTOMERS */}
-        {activeTab === 'customers' && (
-          <div className="space-y-8 animate-fade-in w-full text-left">
-            
-            <div className="pb-6 border-b border-[#EDE7D9] text-left">
-              <span className="text-[9px] font-extrabold tracking-widest uppercase text-[#B8833E]">USER BASE</span>
-              <h1 className="font-serif text-2xl md:text-3xl font-bold text-[#37411A]">Buyer Database</h1>
-            </div>
+        {activeTab === 'customers' && (() => {
+          // Helper: Compute statistics across all customers
+          const getCrmStats = () => {
+            let totalCustomers = customers.length;
+            let activeCustomers = 0;
+            let totalOrders = 0;
+            let totalRevenue = 0;
 
-            <div className="space-y-4">
-              {customers.length === 0 ? (
+            customers.forEach(c => {
+              const ordersCount = c.orders?.length || 0;
+              if (ordersCount > 0) activeCustomers++;
+              totalOrders += ordersCount;
+
+              const spent = c.orders?.reduce((sum, o) => sum + (o.totalAmount || 0), 0) || 0;
+              totalRevenue += spent;
+            });
+
+            return { totalCustomers, activeCustomers, totalOrders, totalRevenue };
+          };
+
+          // Helper: Get customer segment
+          const getCustomerSegment = (c) => {
+            const ordersCount = c.orders?.length || 0;
+            const totalSpend = c.orders?.reduce((sum, o) => sum + (o.totalAmount || 0), 0) || 0;
+            const daysSinceReg = (new Date() - new Date(c.createdAt)) / (1000 * 60 * 60 * 24);
+
+            if (ordersCount >= 5) return 'Loyal';
+            if (totalSpend >= 5000) return 'High-Value';
+            if (daysSinceReg <= 14) return 'New';
+            if (daysSinceReg > 30 && ordersCount === 0) return 'Inactive';
+            return 'Standard';
+          };
+
+          // Helper: Get segment CSS styles
+          const getSegmentStyle = (segment) => {
+            switch (segment) {
+              case 'Loyal':
+                return 'bg-emerald-50 text-emerald-700 border-emerald-250';
+              case 'High-Value':
+                return 'bg-amber-50 text-amber-700 border-amber-250';
+              case 'New':
+                return 'bg-blue-50 text-blue-700 border-blue-250';
+              case 'Inactive':
+                return 'bg-rose-50 text-rose-700 border-rose-250';
+              default:
+                return 'bg-stone-50 text-stone-600 border-stone-250';
+            }
+          };
+
+          const stats = getCrmStats();
+          
+          // Segment counts mapping
+          const segmentCounts = {
+            all: customers.length,
+            new: 0,
+            loyal: 0,
+            'high-value': 0,
+            inactive: 0
+          };
+          
+          customers.forEach(c => {
+            const seg = getCustomerSegment(c).toLowerCase();
+            if (seg in segmentCounts) {
+              segmentCounts[seg]++;
+            }
+          });
+
+          // Perform filtering & searching
+          const filtered = customers.filter(c => {
+            const query = crmSearchQuery.toLowerCase().trim();
+            const phone = c.addresses?.find(a => a.phone)?.phone || '';
+            const matchesSearch = 
+              (c.name || '').toLowerCase().includes(query) ||
+              (c.email || '').toLowerCase().includes(query) ||
+              phone.toLowerCase().includes(query);
+
+            if (!matchesSearch) return false;
+
+            const segment = getCustomerSegment(c).toLowerCase();
+            if (crmFilterSegment === 'all') return true;
+            return segment === crmFilterSegment;
+          });
+
+          return (
+            <div className="space-y-8 animate-fade-in w-full text-left relative">
+              
+              {/* Header section */}
+              <div className="pb-6 border-b border-[#EDE7D9] text-left flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                  <span className="text-[9px] font-extrabold tracking-widest uppercase text-[#B8833E]">RELATIONSHIP MANAGEMENT</span>
+                  <h1 className="font-serif text-2xl md:text-3xl font-bold text-[#37411A]">Customer CRM Panel</h1>
+                </div>
+                <span className="text-[10px] text-stone-400 font-semibold italic bg-white border border-[#EDE7D9] px-3.5 py-1.5 rounded-full shadow-xxs select-none">
+                  Real-time Customer Insights 🌾
+                </span>
+              </div>
+
+              {/* 1. Summary Analytics cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { label: 'Total Customers', value: stats.totalCustomers, icon: '👥', color: 'bg-[#4E641A]/5 text-[#4E641A] border-[#4E641A]/10' },
+                  { label: 'Active Customers', value: stats.activeCustomers, icon: '🛒', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+                  { label: 'Total Orders', value: stats.totalOrders, icon: '📦', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+                  { label: 'Revenue Generated', value: `₹${stats.totalRevenue.toLocaleString('en-IN')}`, icon: '💰', color: 'bg-amber-50 text-amber-700 border-amber-200' }
+                ].map((stat, idx) => (
+                  <div key={idx} className={`p-5 border rounded-[22px] flex flex-col justify-between shadow-xxs ${stat.color}`}>
+                    <span className="text-[9px] font-extrabold uppercase tracking-widest block opacity-85 leading-tight">{stat.label}</span>
+                    <div className="flex items-baseline justify-between mt-4">
+                      <span className="text-xl md:text-2xl font-bold font-serif">{stat.value}</span>
+                      <span className="text-lg select-none">{stat.icon}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 2. Control Toolbar */}
+              <div className="bg-white border border-[#EDE7D9] rounded-[24px] p-5 shadow-sm space-y-4">
+                <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+                  
+                  {/* Search query input */}
+                  <div className="relative flex-grow max-w-md">
+                    <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4" />
+                    <input
+                      type="text"
+                      placeholder="Search Name, Email, or Phone..."
+                      value={crmSearchQuery}
+                      onChange={(e) => setCrmSearchQuery(e.target.value)}
+                      className="w-full bg-[#FAF7F2] border border-[#EDE7D9] rounded-xl py-2.5 pl-10 pr-4 text-xs text-[#37411A] placeholder-stone-400 focus:outline-none focus:border-[#4E641A] font-medium font-sans"
+                    />
+                    {crmSearchQuery && (
+                      <button 
+                        onClick={() => setCrmSearchQuery('')}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 bg-transparent border-none text-[10px] cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* View Toggles */}
+                  <div className="flex items-center gap-1.5 border border-[#EDE7D9] rounded-xl p-1 bg-[#FAF7F2] self-start md:self-auto font-sans">
+                    <button
+                      onClick={() => setCrmViewMode('card')}
+                      className={`px-3.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition cursor-pointer select-none ${
+                        crmViewMode === 'card' 
+                          ? 'bg-[#4E641A] text-white shadow-sm' 
+                          : 'text-stone-500 hover:text-stone-800'
+                      }`}
+                    >
+                      Card View
+                    </button>
+                    <button
+                      onClick={() => setCrmViewMode('table')}
+                      className={`px-3.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition cursor-pointer select-none ${
+                        crmViewMode === 'table' 
+                          ? 'bg-[#4E641A] text-white shadow-sm' 
+                          : 'text-stone-500 hover:text-stone-800'
+                      }`}
+                    >
+                      Table View
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filters Row */}
+                <div className="flex flex-col gap-2 pt-3 border-t border-stone-100 text-xs font-sans">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[9px] font-extrabold uppercase tracking-widest text-stone-400 w-24 text-left">Segment Filter:</span>
+                    {[
+                      { id: 'all', label: 'All Customers', count: segmentCounts.all },
+                      { id: 'new', label: 'New customers', count: segmentCounts.new },
+                      { id: 'loyal', label: 'Loyal customers', count: segmentCounts.loyal },
+                      { id: 'high-value', label: 'High-value spenders', count: segmentCounts['high-value'] },
+                      { id: 'inactive', label: 'Inactive buyers', count: segmentCounts.inactive }
+                    ].map((btn) => (
+                      <button
+                        key={btn.id}
+                        onClick={() => setCrmFilterSegment(btn.id)}
+                        className={`px-3.5 py-1.5 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition cursor-pointer select-none ${
+                          crmFilterSegment === btn.id
+                            ? 'bg-[#4E641A] border-[#4E641A] text-white shadow-sm'
+                            : 'bg-white border-[#EDE7D9] text-stone-600 hover:bg-[#FAF7F2]'
+                        }`}
+                      >
+                        {btn.label} ({btn.count})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Customer Data Presentation */}
+              {filtered.length === 0 ? (
                 <EmptyState
-                  title="👥 No Customers Yet"
-                  description="Customer profiles and purchase history will appear here automatically."
+                  title="👥 No Matching Customers"
+                  description="Try modifying your search or filter segment selection."
                   illustration="👥"
                 />
-              ) : (
-                customers.map((c) => (
-                  <div key={c.id} className="bg-white border border-[#EDE7D9] rounded-2xl p-5 flex items-center justify-between text-xs text-stone-500 shadow-sm hover:border-[#B8833E]/10 transition text-left">
-                    <div className="text-left space-y-1">
-                      <h4 className="font-serif text-sm font-bold text-[#37411A]">{c.name}</h4>
-                      <p className="font-sans text-[10px] text-stone-400">
-                        Email: {c.email} • Registered: {new Date(c.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <span className="bg-[#4E641A]/10 text-[#4E641A] border border-[#4E641A]/20 px-3 py-1 rounded-full font-bold uppercase tracking-wider text-[9px] shrink-0">
-                      {c._count?.orders || 0} Shipments
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
+              ) : crmViewMode === 'card' ? (
+                /* Card View - Responsive Grid layout */
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {filtered.map((c) => {
+                    const segment = getCustomerSegment(c);
+                    const phone = c.addresses?.find(a => a.phone)?.phone || 'No Phone';
+                    const ordersCount = c.orders?.length || 0;
+                    const totalSpend = c.orders?.reduce((sum, o) => sum + (o.totalAmount || 0), 0) || 0;
+                    const lastOrder = c.orders?.[0];
+                    const initials = c.name ? c.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'SF';
 
-          </div>
-        )}
+                    return (
+                      <div 
+                        key={c.id}
+                        onClick={() => { setSelectedCrmCustomer(c); setIsCrmDrawerOpen(true); }}
+                        className="bg-white border border-[#EDE7D9] rounded-[24px] p-5 shadow-sm hover:shadow-md transition duration-300 flex flex-col justify-between gap-5 cursor-pointer relative overflow-hidden group text-left"
+                      >
+                        <div className="space-y-4">
+                          {/* Top row: Avatar & Segment badge */}
+                          <div className="flex justify-between items-center">
+                            <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-[#2F3B0C] to-[#4E641A] flex items-center justify-center text-white font-bold text-xs shadow-sm overflow-hidden shrink-0">
+                              {c.avatarUrl ? (
+                                <img src={c.avatarUrl} alt={c.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <span>{initials}</span>
+                              )}
+                            </div>
+                            <span className={`text-[8px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full border ${getSegmentStyle(segment)}`}>
+                              {segment}
+                            </span>
+                          </div>
+
+                          {/* Profile Data */}
+                          <div className="space-y-1">
+                            <h4 className="font-serif text-sm font-extrabold text-[#37411A] group-hover:text-[#4E641A] transition truncate">{c.name || 'Anonymous User'}</h4>
+                            <p className="text-[10px] text-stone-500 font-medium truncate font-sans">{c.email}</p>
+                            <p className="text-[10px] text-stone-400 font-sans">{phone}</p>
+                          </div>
+
+                          {/* Metrics stats row */}
+                          <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-stone-100 font-sans">
+                            <div className="text-left">
+                              <span className="text-[8px] text-stone-400 font-extrabold uppercase tracking-wider block">Orders</span>
+                              <strong className="text-xs text-stone-700 font-bold">{ordersCount} Placed</strong>
+                            </div>
+                            <div className="text-left">
+                              <span className="text-[8px] text-stone-400 font-extrabold uppercase tracking-wider block">Total Spend</span>
+                              <strong className="text-xs text-primary-green font-bold">₹{totalSpend.toLocaleString('en-IN')}</strong>
+                            </div>
+                          </div>
+
+                          {/* Dates row */}
+                          <div className="text-[9px] font-sans text-stone-400 space-y-0.5 pt-2">
+                            <div>Registered: {new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                            {lastOrder && (
+                              <div className="truncate">Last Order: {new Date(lastOrder.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} ({lastOrder.orderNumber})</div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Quick actions panel */}
+                        <div className="flex gap-1.5 border-t border-stone-100 pt-3.5 mt-2" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            onClick={() => { setSelectedCrmCustomer(c); setIsCrmDrawerOpen(true); }}
+                            className="flex-1 py-2 bg-[#FAF7F2] hover:bg-[#4E641A]/5 text-stone-600 hover:text-[#4E641A] text-[9px] font-bold uppercase tracking-wider rounded-lg transition border border-[#EDE7D9] cursor-pointer"
+                          >
+                            Profile
+                          </button>
+                          <button 
+                            onClick={() => { setOrderSearchQuery(c.email); setActiveTab('orders'); }}
+                            className="flex-1 py-2 bg-[#FAF7F2] hover:bg-[#4E641A]/5 text-stone-600 hover:text-[#4E641A] text-[9px] font-bold uppercase tracking-wider rounded-lg transition border border-[#EDE7D9] cursor-pointer"
+                          >
+                            Orders
+                          </button>
+                          {phone !== 'No Phone' && (
+                            <>
+                              <a 
+                                href={`https://wa.me/${phone.replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-8 h-8 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg flex items-center justify-center border border-green-200 transition cursor-pointer select-none"
+                                title="WhatsApp Customer"
+                              >
+                                💬
+                              </a>
+                              <a 
+                                href={`tel:${phone}`}
+                                className="w-8 h-8 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg flex items-center justify-center border border-blue-200 transition cursor-pointer select-none"
+                                title="Call Customer"
+                              >
+                                📞
+                              </a>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* Table View layout */
+                <div className="bg-white border border-[#EDE7D9] rounded-[24px] overflow-hidden shadow-sm font-sans text-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-[#FAF7F2] border-b border-[#EDE7D9] text-stone-400 text-[9px] font-extrabold uppercase tracking-wider">
+                          <th className="p-4 pl-6">Customer</th>
+                          <th className="p-4">Contact Info</th>
+                          <th className="p-4">Registered Date</th>
+                          <th className="p-4">Orders Placed</th>
+                          <th className="p-4">Total Spend</th>
+                          <th className="p-4">Last Order</th>
+                          <th className="p-4">Segment</th>
+                          <th className="p-4 pr-6 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100 text-stone-600 font-medium">
+                        {filtered.map((c) => {
+                          const segment = getCustomerSegment(c);
+                          const phone = c.addresses?.find(a => a.phone)?.phone || '—';
+                          const ordersCount = c.orders?.length || 0;
+                          const totalSpend = c.orders?.reduce((sum, o) => sum + (o.totalAmount || 0), 0) || 0;
+                          const lastOrder = c.orders?.[0];
+                          const initials = c.name ? c.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'SF';
+
+                          return (
+                            <tr 
+                              key={c.id} 
+                              className="hover:bg-stone-50/50 cursor-pointer transition"
+                              onClick={() => { setSelectedCrmCustomer(c); setIsCrmDrawerOpen(true); }}
+                            >
+                              <td className="p-4 pl-6 flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#2F3B0C] to-[#4E641A] flex items-center justify-center text-white font-bold text-[10px] shadow-sm overflow-hidden shrink-0">
+                                  {c.avatarUrl ? (
+                                    <img src={c.avatarUrl} alt={c.name} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span>{initials}</span>
+                                  )}
+                                </div>
+                                <span className="font-serif text-stone-850 font-bold hover:text-[#4E641A] transition">{c.name || 'Anonymous User'}</span>
+                              </td>
+                              <td className="p-4 font-sans text-[11px]">
+                                <div className="text-stone-700">{c.email}</div>
+                                <div className="text-stone-400 font-normal">{phone}</div>
+                              </td>
+                              <td className="p-4 text-stone-450 font-normal">
+                                {new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </td>
+                              <td className="p-4 text-stone-700 font-bold">{ordersCount} orders</td>
+                              <td className="p-4 text-primary-green font-bold">₹{totalSpend.toLocaleString('en-IN')}</td>
+                              <td className="p-4 font-normal text-[11px]">
+                                {lastOrder ? (
+                                  <div>
+                                    <div className="text-stone-750 font-bold">{lastOrder.orderNumber}</div>
+                                    <div className="text-stone-400">{new Date(lastOrder.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</div>
+                                  </div>
+                                ) : '—'}
+                              </td>
+                              <td className="p-4">
+                                <span className={`text-[8px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded border ${getSegmentStyle(segment)}`}>
+                                  {segment}
+                                </span>
+                              </td>
+                              <td className="p-4 pr-6 text-right" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button 
+                                    onClick={() => { setSelectedCrmCustomer(c); setIsCrmDrawerOpen(true); }}
+                                    className="px-2.5 py-1.5 bg-[#FAF7F2] hover:bg-[#4E641A]/5 text-stone-600 hover:text-[#4E641A] text-[9px] font-bold uppercase tracking-wider rounded border border-[#EDE7D9] transition cursor-pointer select-none"
+                                  >
+                                    View
+                                  </button>
+                                  <button 
+                                    onClick={() => { setOrderSearchQuery(c.email); setActiveTab('orders'); }}
+                                    className="px-2.5 py-1.5 bg-[#FAF7F2] hover:bg-[#4E641A]/5 text-stone-600 hover:text-[#4E641A] text-[9px] font-bold uppercase tracking-wider rounded border border-[#EDE7D9] transition cursor-pointer select-none"
+                                  >
+                                    Orders
+                                  </button>
+                                  {phone !== '—' && (
+                                    <>
+                                      <a 
+                                        href={`https://wa.me/${phone.replace(/[^0-9]/g, '')}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-7 h-7 bg-green-50 hover:bg-green-100 text-green-700 rounded flex items-center justify-center border border-green-200 transition cursor-pointer select-none"
+                                        title="WhatsApp Customer"
+                                      >
+                                        💬
+                                      </a>
+                                      <a 
+                                        href={`tel:${phone}`}
+                                        className="w-7 h-7 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded flex items-center justify-center border border-blue-200 transition cursor-pointer select-none"
+                                        title="Call Customer"
+                                      >
+                                        📞
+                                      </a>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Side Drawer Overlay for Detailed CRM User Profile */}
+              <AnimatePresence>
+                {isCrmDrawerOpen && selectedCrmCustomer && (() => {
+                  const c = selectedCrmCustomer;
+                  const segment = getCustomerSegment(c);
+                  const ordersCount = c.orders?.length || 0;
+                  const totalSpend = c.orders?.reduce((sum, o) => sum + (o.totalAmount || 0), 0) || 0;
+                  const avgOrderValue = ordersCount > 0 ? (totalSpend / ordersCount) : 0;
+                  const revenueContribution = stats.totalRevenue > 0 ? ((totalSpend / stats.totalRevenue) * 100) : 0;
+                  const phone = c.addresses?.find(a => a.phone)?.phone || 'No Phone';
+                  const initials = c.name ? c.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'SF';
+
+                  // Timeline events calculation
+                  const timeline = [
+                    {
+                      type: 'registration',
+                      title: 'Customer Registered',
+                      description: 'Account created in Suryodaya Farms database.',
+                      date: new Date(c.createdAt)
+                    },
+                    ...(c.orders || []).map(o => ({
+                      type: 'order',
+                      title: `Order Placed: ${o.orderNumber}`,
+                      description: `Ordered native staples worth ₹${o.totalAmount.toLocaleString('en-IN')}. Status: ${o.status}.`,
+                      date: new Date(o.createdAt)
+                    }))
+                  ].sort((a, b) => b.date - a.date);
+
+                  return (
+                    <div className="fixed inset-0 z-50 overflow-hidden flex justify-end font-sans">
+                      {/* Backdrop */}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 0.5 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setIsCrmDrawerOpen(false)}
+                        className="absolute inset-0 bg-stone-900/50 cursor-pointer"
+                      />
+
+                      {/* Drawer Panel */}
+                      <motion.div
+                        initial={{ x: '100%' }}
+                        animate={{ x: 0 }}
+                        exit={{ x: '100%' }}
+                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                        className="relative w-full max-w-lg bg-[#FAF7F2] border-l border-[#EDE7D9] h-full shadow-2xl p-6 overflow-y-auto flex flex-col gap-6"
+                      >
+                        {/* Drawer Close & Header */}
+                        <div className="flex justify-between items-start border-b border-[#EDE7D9] pb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#2F3B0C] to-[#4E641A] flex items-center justify-center text-white font-bold text-sm shadow-sm overflow-hidden shrink-0">
+                              {c.avatarUrl ? (
+                                <img src={c.avatarUrl} alt={c.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <span>{initials}</span>
+                              )}
+                            </div>
+                            <div>
+                              <h3 className="font-serif text-base font-extrabold text-[#2F3B0C] flex items-center gap-2">
+                                <span>{c.name || 'Anonymous User'}</span>
+                                <span className={`text-[8px] font-extrabold uppercase tracking-widest px-2.5 py-0.5 rounded border ${getSegmentStyle(segment)}`}>
+                                  {segment}
+                                </span>
+                              </h3>
+                              <p className="text-[10px] text-stone-500 font-medium font-sans mt-0.5">{c.email}</p>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => setIsCrmDrawerOpen(false)}
+                            className="p-1.5 hover:bg-stone-200/50 text-stone-400 hover:text-stone-700 rounded-lg transition border-none bg-transparent cursor-pointer font-bold text-sm"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        {/* General Coordinates */}
+                        <div className="space-y-2">
+                          <span className="text-[8px] font-extrabold text-[#B8833E] tracking-widest uppercase block">Personal Profile</span>
+                          <div className="grid grid-cols-2 gap-4 bg-white border border-[#EDE7D9] rounded-2xl p-4 shadow-xxs text-xs">
+                            <div className="space-y-0.5">
+                              <span className="text-[8px] text-stone-400 uppercase block font-extrabold">Registered On</span>
+                              <strong className="text-stone-750 font-bold">{new Date(c.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>
+                            </div>
+                            <div className="space-y-0.5">
+                              <span className="text-[8px] text-stone-400 uppercase block font-extrabold">Primary Mobile</span>
+                              <strong className="text-stone-750 font-bold">{phone}</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Financial Contributions */}
+                        <div className="space-y-2">
+                          <span className="text-[8px] font-extrabold text-[#B8833E] tracking-widest uppercase block">Financial Contribution</span>
+                          <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-[#4E641A]/5 border border-[#4E641A]/10 rounded-2xl p-3.5 text-center">
+                              <span className="text-[7.5px] text-stone-400 uppercase block font-extrabold tracking-wider leading-none">Total Spend</span>
+                              <strong className="text-base text-primary-green font-bold block mt-1.5">₹{totalSpend.toLocaleString('en-IN')}</strong>
+                            </div>
+                            <div className="bg-[#4E641A]/5 border border-[#4E641A]/10 rounded-2xl p-3.5 text-center">
+                              <span className="text-[7.5px] text-stone-400 uppercase block font-extrabold tracking-wider leading-none">Avg Order Val</span>
+                              <strong className="text-base text-stone-800 font-bold block mt-1.5">₹{Math.round(avgOrderValue).toLocaleString('en-IN')}</strong>
+                            </div>
+                            <div className="bg-[#4E641A]/5 border border-[#4E641A]/10 rounded-2xl p-3.5 text-center">
+                              <span className="text-[7.5px] text-stone-400 uppercase block font-extrabold tracking-wider leading-none">Revenue Portion</span>
+                              <strong className="text-base text-[#B8833E] font-bold block mt-1.5">{revenueContribution.toFixed(1)}%</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Saved Addresses list */}
+                        <div className="space-y-2">
+                          <span className="text-[8px] font-extrabold text-[#B8833E] tracking-widest uppercase block">Registered Addresses ({c.addresses?.length || 0})</span>
+                          {c.addresses && c.addresses.length > 0 ? (
+                            <div className="flex flex-col gap-2 max-h-[120px] overflow-y-auto no-scrollbar">
+                              {c.addresses.map((addr) => (
+                                <div key={addr.id} className="bg-white border border-[#EDE7D9] rounded-xl p-3 flex flex-col gap-1 shadow-xxs text-[11px]">
+                                  <div className="flex items-center gap-1.5">
+                                    <strong className="font-serif text-stone-750 font-bold">{addr.title}</strong>
+                                    {addr.isDefault && <span className="text-[7px] font-extrabold bg-[#4E641A]/10 text-[#4E641A] px-1.5 py-0.5 rounded">Primary</span>}
+                                  </div>
+                                  <p className="text-stone-600 leading-relaxed font-light font-sans text-[10px]">
+                                    {addr.recipientName} • {addr.phone} <br />
+                                    {addr.street}, {addr.city}, {addr.state} – {addr.postalCode}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-stone-400 italic">No coordinates saved.</p>
+                          )}
+                        </div>
+
+                        {/* Order Logs */}
+                        <div className="space-y-2">
+                          <span className="text-[8px] font-extrabold text-[#B8833E] tracking-widest uppercase block">Complete Purchase Logs ({ordersCount})</span>
+                          {c.orders && c.orders.length > 0 ? (
+                            <div className="flex flex-col gap-2.5 max-h-[180px] overflow-y-auto pr-1">
+                              {c.orders.map((o) => (
+                                <div key={o.id} className="bg-white border border-[#EDE7D9] rounded-xl p-3.5 shadow-xxs flex flex-col gap-2.5 text-[11px] font-sans">
+                                  <div className="flex justify-between items-center pb-1.5 border-b border-stone-100">
+                                    <div>
+                                      <strong className="text-stone-850 font-serif font-bold text-xs">{o.orderNumber}</strong>
+                                      <span className="text-[8.5px] text-stone-400 font-light block mt-0.5">
+                                        {new Date(o.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                      </span>
+                                    </div>
+                                    <span className={`text-[7.5px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded border ${
+                                      o.status === 'DELIVERED' 
+                                        ? 'bg-green-50 text-green-700 border-green-200' 
+                                        : o.status === 'CANCELLED' 
+                                          ? 'bg-red-50 text-red-750 border-red-200' 
+                                          : 'bg-amber-50 text-amber-700 border-amber-200'
+                                    }`}>
+                                      {o.status}
+                                    </span>
+                                  </div>
+                                  
+                                  {/* Order Items */}
+                                  <div className="flex flex-col gap-1 pl-0.5 text-[10px] font-light text-stone-500">
+                                    {o.orderItems?.map(item => (
+                                      <div key={item.id} className="flex justify-between">
+                                        <span>{item.product?.name} {item.variant ? `(${item.variant.name})` : ''} <strong className="text-stone-700 font-bold">x{item.quantity}</strong></span>
+                                        <span className="font-medium text-stone-800">₹{(item.price * item.quantity).toLocaleString('en-IN')}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  
+                                  <div className="flex justify-between items-center pt-1.5 border-t border-stone-100">
+                                    <span className="text-[8.5px] font-bold text-stone-400 uppercase tracking-wide">Paid Amount</span>
+                                    <strong className="text-[11px] text-primary-green font-bold">₹{o.totalAmount.toLocaleString('en-IN')}</strong>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-stone-400 italic">No shipments logs recorded.</p>
+                          )}
+                        </div>
+
+                        {/* CRM Activity logs timeline */}
+                        <div className="space-y-2">
+                          <span className="text-[8px] font-extrabold text-[#B8833E] tracking-widest uppercase block">CRM Activity Log</span>
+                          <div className="border-l border-stone-200 pl-4 space-y-3.5 text-left pt-1">
+                            {timeline.map((event, idx) => (
+                              <div key={idx} className="relative">
+                                <div className={`absolute -left-[20.5px] top-0.5 w-3 h-3 rounded-full border bg-white flex items-center justify-center shrink-0 ${
+                                  event.type === 'registration' 
+                                    ? 'border-blue-500 text-blue-500' 
+                                    : 'border-green-600 text-green-600'
+                                }`}>
+                                  <span className="text-[5px]">●</span>
+                                </div>
+                                <div className="space-y-0.5 pl-0.5 text-[11px]">
+                                  <strong className="text-[10px] text-stone-850 font-bold block leading-none">{event.title}</strong>
+                                  <p className="text-[9.5px] text-stone-500 font-light leading-relaxed">{event.description}</p>
+                                  <span className="text-[8px] text-stone-400 font-light block pt-0.5">
+                                    {event.date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} at {event.date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                      </motion.div>
+                    </div>
+                  );
+                })()}
+              </AnimatePresence>
+
+            </div>
+          );
+        })()}
 
         {/* TAB 5: CATEGORIES */}
         {activeTab === 'categories' && (
@@ -5138,10 +6248,55 @@ export default function AdminDashboard() {
                     />
                   </div>
 
+                  {/* Visibility & Showcase Configuration */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 col-span-2 bg-[#FDFBF7] border border-[#EDE7D9] rounded-2xl p-4 shadow-xxs text-left font-sans text-stone-500">
+                    <div className="flex items-start gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        id="cat-isVisible"
+                        checked={categoryForm.isVisible}
+                        onChange={(e) => setCategoryForm({ ...categoryForm, isVisible: e.target.checked })}
+                        className="w-4 h-4 mt-0.5 text-[#4E641A] border-[#EDE7D9] rounded focus:ring-[#4E641A] cursor-pointer accent-[#4E641A]"
+                      />
+                      <div className="flex flex-col leading-tight">
+                        <label htmlFor="cat-isVisible" className="text-[9px] font-extrabold uppercase text-[#37411A] tracking-wider cursor-pointer">Visible in Catalog</label>
+                        <span className="text-[8px] text-stone-400 mt-0.5">Show this collection in listings.</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        id="cat-homepageVisible"
+                        checked={categoryForm.homepageVisible}
+                        onChange={(e) => setCategoryForm({ ...categoryForm, homepageVisible: e.target.checked })}
+                        className="w-4 h-4 mt-0.5 text-[#4E641A] border-[#EDE7D9] rounded focus:ring-[#4E641A] cursor-pointer accent-[#4E641A]"
+                      />
+                      <div className="flex flex-col leading-tight">
+                        <label htmlFor="cat-homepageVisible" className="text-[9px] font-extrabold uppercase text-[#37411A] tracking-wider cursor-pointer">Show on Homepage</label>
+                        <span className="text-[8px] text-stone-400 mt-0.5">Display on homepage showcase.</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        id="cat-isFeatured"
+                        checked={categoryForm.isFeatured}
+                        onChange={(e) => setCategoryForm({ ...categoryForm, isFeatured: e.target.checked })}
+                        className="w-4 h-4 mt-0.5 text-[#4E641A] border-[#EDE7D9] rounded focus:ring-[#4E641A] cursor-pointer accent-[#4E641A]"
+                      />
+                      <div className="flex flex-col leading-tight">
+                        <label htmlFor="cat-isFeatured" className="text-[9px] font-extrabold uppercase text-[#37411A] tracking-wider cursor-pointer">Featured Category</label>
+                        <span className="text-[8px] text-stone-400 mt-0.5">Flag with custom badge identifier.</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="col-span-2 flex justify-end gap-3 mt-4">
                     <button
                       type="button"
-                      onClick={() => { setShowCategoryModal(false); setCategoryForm({ id: '', name: '', description: '', image: '', seoTitle: '', seoDescription: '' }); }}
+                      onClick={() => { setShowCategoryModal(false); setCategoryForm({ id: '', name: '', description: '', image: '', seoTitle: '', seoDescription: '', isVisible: true, homepageVisible: true, isFeatured: false }); }}
                       className="px-5 py-3 rounded-xl border border-stone-200 text-stone-400 hover:bg-stone-50 uppercase font-bold tracking-wider cursor-pointer"
                     >
                       Cancel
@@ -5195,9 +6350,13 @@ export default function AdminDashboard() {
                           description: categoryDetails.description || '',
                           image: categoryDetails.image || '',
                           seoTitle: categoryDetails.seoTitle || '',
-                          seoDescription: categoryDetails.seoDescription || ''
+                          seoDescription: categoryDetails.seoDescription || '',
+                          isVisible: categoryDetails.isVisible !== undefined ? categoryDetails.isVisible : true,
+                          homepageVisible: categoryDetails.homepageVisible !== undefined ? categoryDetails.homepageVisible : true,
+                          isFeatured: categoryDetails.isFeatured !== undefined ? categoryDetails.isFeatured : false
                         });
                         setShowCategoryModal(true);
+                        scrollToTop();
                       }}
                       className="px-4 py-2 border border-stone-200 text-stone-600 hover:bg-stone-50 text-xs font-bold uppercase tracking-wider rounded-xl transition flex items-center space-x-1.5 cursor-pointer bg-white"
                     >
@@ -5347,7 +6506,7 @@ export default function AdminDashboard() {
                           setSelectedProductIdsToAssign([]);
                           setShowAssignModal(true);
                         }}
-                        className="px-5 py-2.5 bg-[#4E641A] hover:bg-[#37411A] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition shadow border-none cursor-pointer"
+                        className="px-5 py-2.5 bg-[#4E641A] hover:bg-[#37411A] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition shadow border-none cursor-pointer select-none"
                       >
                         Assign Products
                       </button>
@@ -5357,7 +6516,9 @@ export default function AdminDashboard() {
               </div>
             ) : (
               // GENERAL CATEGORIES LIST VIEW
-              <div className="space-y-8">
+              <div className="space-y-8 animate-fade-in w-full text-left">
+                
+                {/* Header Block */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#EDE7D9]">
                   <div className="space-y-1">
                     <span className="text-[9px] font-extrabold tracking-widest uppercase text-[#B8833E]">COLLECTIONS SETTINGS</span>
@@ -5365,69 +6526,535 @@ export default function AdminDashboard() {
                   </div>
                   <button
                     onClick={() => {
-                      setCategoryForm({ id: '', name: '', description: '', image: '', seoTitle: '', seoDescription: '' });
+                      setCategoryForm({ id: '', name: '', description: '', image: '', seoTitle: '', seoDescription: '', isVisible: true, homepageVisible: true, isFeatured: false });
                       setShowCategoryModal(true);
+                      scrollToTop();
                     }}
-                    className="px-5 py-3 bg-[#4E641A] hover:bg-[#37411A] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition flex items-center space-x-1.5 shadow border-none cursor-pointer"
+                    className="px-5 py-3 bg-[#4E641A] hover:bg-[#37411A] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition flex items-center space-x-1.5 shadow border-none cursor-pointer select-none"
                   >
                     <FiPlus />
                     <span>Create Category</span>
                   </button>
                 </div>
 
-                {/* Categories list */}
-                {categories.length === 0 ? (
-                  <EmptyState
-                    title="🏷️ No Categories Created"
-                    description="Organize your products into categories to help customers browse easily."
-                    illustration="🏷️"
-                    actionLabel="Create Category"
-                    onAction={() => {
-                      setCategoryForm({ id: '', name: '', description: '', image: '', seoTitle: '', seoDescription: '' });
-                      setShowCategoryModal(true);
-                    }}
-                  />
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full text-left">
-                    {categories.filter(c => c.slug?.toLowerCase() !== 'uncategorized' && c.name?.toLowerCase() !== 'uncategorized').map((cat) => (
-                      <div 
-                        key={cat.id} 
-                        onClick={() => setSelectedCategoryId(cat.id)}
-                        className="bg-white border border-[#EDE7D9] hover:border-[#4E641A]/30 rounded-2xl p-5 flex items-center justify-between gap-4 shadow-sm hover:shadow transition duration-300 group cursor-pointer"
-                      >
-                        <div className="flex gap-4 items-center">
-                          {cat.image ? (
-                            <img src={cat.image} alt={cat.name} className="w-12 h-12 object-cover rounded-xl border border-[#EDE7D9]" />
-                          ) : (
-                            <div className="w-12 h-12 rounded-xl bg-stone-50 border border-[#EDE7D9] flex items-center justify-center font-bold text-xs text-[#4E641A]">🌿</div>
-                          )}
-                          <div className="text-left space-y-0.5">
-                            <h4 className="font-serif text-sm font-bold text-[#37411A] group-hover:text-[#4E641A] transition">{cat.name}</h4>
-                            <p className="text-[10px] text-stone-450 truncate max-w-[180px]">{cat.description || 'No description provided.'}</p>
-                            <span className="text-[9px] text-[#B8833E] font-bold block">
-                              {cat._count?.products || 0} Linked Products
-                            </span>
-                          </div>
+                {/* 1. Analytics Cards Panel */}
+                {(() => {
+                  const totalCategoriesCount = categories.length;
+                  const totalProductsCount = products.length;
+                  
+                  let largestCollectionName = 'None';
+                  let largestCollectionCount = 0;
+                  categories.forEach(c => {
+                    const count = c._count?.products || 0;
+                    if (count > largestCollectionCount) {
+                      largestCollectionCount = count;
+                      largestCollectionName = c.name;
+                    }
+                  });
+                  const largestCollectionDisplay = largestCollectionCount > 0 
+                    ? `${largestCollectionName} (${largestCollectionCount} Items)`
+                    : 'None';
+                    
+                  const homepageActiveCollectionsCount = categories.filter(c => c.homepageVisible).length;
+
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                      <div className="bg-[#FAF7F2] border border-[#EDE7D9] rounded-2xl p-5 flex items-center gap-4 shadow-xxs">
+                        <div className="w-12 h-12 rounded-xl bg-[#4E641A]/10 flex items-center justify-center text-[#4E641A] text-xl">
+                          🏷️
                         </div>
-                        <div className="flex items-center space-x-2 shrink-0 animate-fade-in" onClick={(e) => e.stopPropagation()}>
-                          <span 
-                            onClick={() => setSelectedCategoryId(cat.id)}
-                            className="bg-[#B8833E]/10 hover:bg-[#B8833E]/20 text-[#B8833E] border border-[#B8833E]/20 px-2.5 py-1 rounded-full font-bold uppercase tracking-wider text-[8px] cursor-pointer transition"
-                          >
-                            View Details
-                          </span>
-                          <button
-                            onClick={() => handleDeleteCategory(cat.id)}
-                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition cursor-pointer bg-transparent border-none flex items-center justify-center"
-                            title="Delete Category"
-                          >
-                            <FiTrash2 size={13} />
-                          </button>
+                        <div className="text-left">
+                          <span className="block text-[8px] font-extrabold uppercase tracking-widest text-[#B8833E]">Total Categories</span>
+                          <span className="font-serif text-xl font-extrabold text-[#2F3B0C] leading-tight block mt-1">{totalCategoriesCount}</span>
                         </div>
                       </div>
-                    ))}
+                      
+                      <div className="bg-[#FAF7F2] border border-[#EDE7D9] rounded-2xl p-5 flex items-center gap-4 shadow-xxs">
+                        <div className="w-12 h-12 rounded-xl bg-[#4E641A]/10 flex items-center justify-center text-[#4E641A] text-xl">
+                          🌾
+                        </div>
+                        <div className="text-left">
+                          <span className="block text-[8px] font-extrabold uppercase tracking-widest text-[#B8833E]">Catalog Products</span>
+                          <span className="font-serif text-xl font-extrabold text-[#2F3B0C] leading-tight block mt-1">{totalProductsCount}</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-[#FAF7F2] border border-[#EDE7D9] rounded-2xl p-5 flex items-center gap-4 shadow-xxs col-span-1">
+                        <div className="w-12 h-12 rounded-xl bg-[#4E641A]/10 flex items-center justify-center text-[#4E641A] text-xl">
+                          📈
+                        </div>
+                        <div className="text-left min-w-0">
+                          <span className="block text-[8px] font-extrabold uppercase tracking-widest text-[#B8833E]">Largest Collection</span>
+                          <span className="font-serif text-xs font-extrabold text-[#2F3B0C] truncate leading-tight block mt-1.5" title={largestCollectionDisplay}>
+                            {largestCollectionDisplay}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-[#FAF7F2] border border-[#EDE7D9] rounded-2xl p-5 flex items-center gap-4 shadow-xxs">
+                        <div className="w-12 h-12 rounded-xl bg-[#4E641A]/10 flex items-center justify-center text-[#4E641A] text-xl">
+                          🏠
+                        </div>
+                        <div className="text-left">
+                          <span className="block text-[8px] font-extrabold uppercase tracking-widest text-[#B8833E]">Homepage Active</span>
+                          <span className="font-serif text-xl font-extrabold text-[#2F3B0C] leading-tight block mt-1">{homepageActiveCollectionsCount}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* 2. Search, Filter & Sort Controls Panel */}
+                <div className="flex flex-col lg:flex-row gap-4 justify-between items-stretch bg-white border border-[#EDE7D9] p-4 rounded-2xl shadow-xxs">
+                  <div className="flex items-center bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl px-4 py-2 flex-1 min-w-[280px]">
+                    <FiSearch className="text-stone-400 mr-2.5 shrink-0" size={14} />
+                    <input
+                      type="text"
+                      placeholder="Search collections by name or description..."
+                      value={catSearchQuery}
+                      onChange={(e) => setCatSearchQuery(e.target.value)}
+                      className="w-full bg-transparent border-none focus:outline-none text-xs text-[#37411A] placeholder-stone-400 py-1"
+                    />
+                    {catSearchQuery && (
+                      <button onClick={() => setCatSearchQuery('')} className="text-stone-400 hover:text-stone-700 font-bold text-xs bg-transparent border-none cursor-pointer">✕</button>
+                    )}
                   </div>
-                )}
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-col gap-0.5 text-left">
+                      <label className="text-[7.5px] font-extrabold uppercase tracking-wider text-stone-400 px-1">Homepage Showcase</label>
+                      <select
+                        value={catHomepageFilter}
+                        onChange={(e) => setCatHomepageFilter(e.target.value)}
+                        className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-2 px-3 text-xs text-[#37411A] font-semibold focus:outline-none focus:border-[#4E641A] cursor-pointer"
+                      >
+                        <option value="all">All Visibility</option>
+                        <option value="visible">Active on Home</option>
+                        <option value="hidden">Hidden from Home</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-0.5 text-left">
+                      <label className="text-[7.5px] font-extrabold uppercase tracking-wider text-stone-400 px-1">Collection Size</label>
+                      <select
+                        value={catSizeFilter}
+                        onChange={(e) => setCatSizeFilter(e.target.value)}
+                        className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-2 px-3 text-xs text-[#37411A] font-semibold focus:outline-none focus:border-[#4E641A] cursor-pointer"
+                      >
+                        <option value="all">All Sizes</option>
+                        <option value="active">Active (1+ Items)</option>
+                        <option value="empty">Empty Collections</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-0.5 text-left">
+                      <label className="text-[7.5px] font-extrabold uppercase tracking-wider text-stone-400 px-1">Sort By</label>
+                      <select
+                        value={catSortBy}
+                        onChange={(e) => setCatSortBy(e.target.value)}
+                        className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-2 px-3 text-xs text-[#37411A] font-semibold focus:outline-none focus:border-[#4E641A] cursor-pointer"
+                      >
+                        <option value="name-asc">Name: A-Z</option>
+                        <option value="name-desc">Name: Z-A</option>
+                        <option value="products-desc">Size: High to Low</option>
+                        <option value="products-asc">Size: Low to High</option>
+                        <option value="updated-desc">Recently Updated</option>
+                        <option value="updated-asc">Oldest Updated</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Collection Showcase Cards Grid */}
+                {(() => {
+                  const filteredCategories = categories
+                    .filter(c => c.slug?.toLowerCase() !== 'uncategorized' && c.name?.toLowerCase() !== 'uncategorized')
+                    .filter(c => {
+                      const query = catSearchQuery.toLowerCase();
+                      const nameMatch = c.name?.toLowerCase().includes(query);
+                      const descMatch = c.description?.toLowerCase().includes(query);
+                      if (!nameMatch && !descMatch) return false;
+                      
+                      if (catHomepageFilter === 'visible' && !c.homepageVisible) return false;
+                      if (catHomepageFilter === 'hidden' && c.homepageVisible) return false;
+                      
+                      const size = c._count?.products || 0;
+                      if (catSizeFilter === 'active' && size === 0) return false;
+                      if (catSizeFilter === 'empty' && size > 0) return false;
+                      
+                      return true;
+                    })
+                    .sort((a, b) => {
+                      if (catSortBy === 'name-asc') return a.name.localeCompare(b.name);
+                      if (catSortBy === 'name-desc') return b.name.localeCompare(a.name);
+                      if (catSortBy === 'products-desc') return (b._count?.products || 0) - (a._count?.products || 0);
+                      if (catSortBy === 'products-asc') return (a._count?.products || 0) - (b._count?.products || 0);
+                      if (catSortBy === 'updated-desc') return new Date(b.updatedAt) - new Date(a.updatedAt);
+                      if (catSortBy === 'updated-asc') return new Date(a.updatedAt) - new Date(b.updatedAt);
+                      return 0;
+                    });
+
+                  if (filteredCategories.length === 0) {
+                    return (
+                      <EmptyState
+                        title="🏷️ No Matching Collections Found"
+                        description="Try refining your search queries or filter selections."
+                        illustration="🏷️"
+                        actionLabel="Clear Search"
+                        onAction={() => {
+                          setCatSearchQuery('');
+                          setCatHomepageFilter('all');
+                          setCatSizeFilter('all');
+                          setCatSortBy('name-asc');
+                        }}
+                      />
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full text-left">
+                      {filteredCategories.map((cat) => {
+                        const productCount = cat._count?.products || 0;
+                        const formattedDate = new Date(cat.updatedAt).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        });
+
+                        return (
+                          <div 
+                            key={cat.id} 
+                            className="bg-[#FAF7F2] border border-[#EDE7D9] rounded-2xl overflow-hidden shadow-xxs hover:shadow-sm hover:border-[#4E641A]/30 transition duration-300 flex flex-col group"
+                          >
+                            {/* Card Poster Image Banner */}
+                            <div 
+                              onClick={() => setSelectedCategoryId(cat.id)}
+                              className="h-44 w-full relative overflow-hidden bg-gradient-to-br from-[#EDE7D9]/60 to-[#FDFBF7] cursor-pointer select-none"
+                            >
+                              {cat.image ? (
+                                <img 
+                                  src={cat.image} 
+                                  alt={cat.name} 
+                                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-4xl bg-gradient-to-tr from-[#2F3B0C]/10 to-[#4E641A]/10 text-[#4E641A]">🌿</div>
+                              )}
+                              {/* Overlay darkness gradient */}
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent" />
+                              
+                              {/* Left Badge: Homepage Showcase inline Toggle */}
+                              <div className="absolute top-3.5 left-3.5 z-20">
+                                {cat.homepageVisible ? (
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); handleToggleHomepageVisible(cat); }}
+                                    className="bg-[#4E641A] hover:bg-[#37411A] text-white border border-[#4E641A]/30 text-[8px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full cursor-pointer transition select-none flex items-center gap-1 shadow-sm leading-none"
+                                    title="Click to hide from Homepage"
+                                  >
+                                    <span>🏠 Active Home</span>
+                                  </button>
+                                ) : (
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); handleToggleHomepageVisible(cat); }}
+                                    className="bg-stone-700/80 hover:bg-stone-850 text-white border border-stone-600/30 text-[8px] font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full cursor-pointer transition select-none flex items-center gap-1 shadow-sm leading-none"
+                                    title="Click to showcase on Homepage"
+                                  >
+                                    <span>✕ Hidden Home</span>
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Right Badge: General Visibility Icon */}
+                              <div className="absolute top-3.5 right-3.5 z-20 flex gap-1.5">
+                                {cat.isFeatured && (
+                                  <span className="bg-[#B8833E] text-white text-[7.5px] font-extrabold uppercase tracking-widest px-2 py-1 rounded shadow-sm leading-none">
+                                    ★ Featured
+                                  </span>
+                                )}
+                                {cat.isVisible ? (
+                                  <span 
+                                    className="bg-white/85 text-[#4E641A] p-1.5 rounded-lg border border-[#EDE7D9] flex items-center justify-center shadow-sm" 
+                                    title="Visible in Catalog"
+                                  >
+                                    <FiEye size={12} />
+                                  </span>
+                                ) : (
+                                  <span 
+                                    className="bg-red-50/90 text-red-655 p-1.5 rounded-lg border border-red-200/50 flex items-center justify-center shadow-sm" 
+                                    title="Hidden from Catalog"
+                                  >
+                                    <FiEyeOff size={12} />
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Items Count overlay bottom right */}
+                              <div className="absolute bottom-3 right-3 z-20">
+                                <span className="bg-white/90 backdrop-blur-xxs text-[#37411A] text-[8px] font-extrabold uppercase tracking-wider px-2 py-1 rounded-lg shadow-xxs border border-[#EDE7D9]/50">
+                                  {productCount} linked {productCount === 1 ? 'item' : 'items'}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Card Details Body */}
+                            <div className="p-4.5 flex-grow flex flex-col justify-between gap-3 text-left border-x border-b border-[#EDE7D9] bg-white rounded-b-2xl">
+                              <div className="space-y-1">
+                                <h3 
+                                  onClick={() => setSelectedCategoryId(cat.id)}
+                                  className="font-serif text-base font-extrabold text-[#2F3B0C] hover:text-[#4E641A] cursor-pointer transition truncate leading-snug"
+                                >
+                                  {cat.name}
+                                </h3>
+                                <p className="text-[10px] text-stone-500 font-sans line-clamp-2 leading-relaxed min-h-[30px] font-light">
+                                  {cat.description || 'Harvested directly from chemical-free organic farming soils.'}
+                                </p>
+                              </div>
+
+                              {/* Footer Meta info */}
+                              <div className="flex justify-between items-center pt-2.5 border-t border-[#EDE7D9]/50 text-[9px] text-stone-400 font-sans font-medium">
+                                <span>Slug: <span className="font-mono text-stone-650">{cat.slug}</span></span>
+                                <span>Updated: {formattedDate}</span>
+                              </div>
+
+                              {/* Action buttons list */}
+                              <div className="grid grid-cols-5 gap-1.5 pt-1.5 text-[8.5px] font-extrabold uppercase tracking-wider">
+                                <button
+                                  onClick={() => {
+                                    setCategoryForm({
+                                      id: cat.id,
+                                      name: cat.name,
+                                      description: cat.description || '',
+                                      image: cat.image || '',
+                                      seoTitle: cat.seoTitle || '',
+                                      seoDescription: cat.seoDescription || '',
+                                      isVisible: cat.isVisible !== undefined ? cat.isVisible : true,
+                                      homepageVisible: cat.homepageVisible !== undefined ? cat.homepageVisible : true,
+                                      isFeatured: cat.isFeatured !== undefined ? cat.isFeatured : false
+                                    });
+                                    setShowCategoryModal(true);
+                                    scrollToTop();
+                                  }}
+                                  className="py-1.5 bg-[#FAF7F2] hover:bg-[#EDE7D9] text-[#2F3B0C] border border-[#EDE7D9] rounded-lg transition cursor-pointer select-none"
+                                  title="Edit Collection"
+                                >
+                                  Edit
+                                </button>
+                                
+                                <button
+                                  onClick={() => setActivePreviewCategory(cat)}
+                                  className="py-1.5 bg-[#FAF7F2] hover:bg-[#EDE7D9] text-[#2F3B0C] border border-[#EDE7D9] rounded-lg transition cursor-pointer select-none"
+                                  title="Preview Collection Page"
+                                >
+                                  Preview
+                                </button>
+
+                                <button
+                                  onClick={() => setSelectedCategoryId(cat.id)}
+                                  className="py-1.5 bg-[#FAF7F2] hover:bg-[#EDE7D9] text-[#2F3B0C] border border-[#EDE7D9] rounded-lg transition cursor-pointer select-none col-span-1"
+                                  title="View Assigned Products"
+                                >
+                                  Products
+                                </button>
+
+                                <button
+                                  onClick={() => setActiveAnalyticsCategory(cat)}
+                                  className="py-1.5 bg-[#FAF7F2] hover:bg-[#EDE7D9] text-[#B8833E] border border-[#EDE7D9] rounded-lg transition cursor-pointer select-none"
+                                  title="Performance Analytics"
+                                >
+                                  Stats
+                                </button>
+
+                                <button
+                                  onClick={() => handleDeleteCategory(cat.id)}
+                                  className="py-1.5 bg-red-50 hover:bg-red-100 text-red-655 border border-red-200/50 rounded-lg transition cursor-pointer select-none"
+                                  title="Delete Collection"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Category Mock Preview Modal */}
+                {activePreviewCategory && (() => {
+                  const cat = activePreviewCategory;
+                  
+                  // Dynamically extract products belonging to this category in global products array
+                  const linkedProducts = products.filter(p => 
+                    p.categories?.some(c => c.id === cat.id || c.slug === cat.slug)
+                  );
+
+                  return (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto font-sans">
+                      <div className="bg-[#FAF7F2] border border-[#EDE7D9] rounded-[28px] max-w-4xl w-full shadow-2xl p-6 relative animate-scale-up space-y-6 max-h-[90vh] overflow-y-auto text-stone-700">
+                        <button 
+                          onClick={() => setActivePreviewCategory(null)}
+                          className="absolute top-4 right-4 p-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-full border-none cursor-pointer text-sm font-bold w-8 h-8 flex items-center justify-center shadow-md"
+                          style={{ zIndex: 9999 }}
+                        >
+                          ✕
+                        </button>
+                        
+                        {/* Banner Mockup */}
+                        <div className="relative h-56 rounded-2xl overflow-hidden border border-[#EDE7D9] shadow-sm bg-stone-100 text-left">
+                          {cat.image ? (
+                            <img src={cat.image} alt={cat.name} className="absolute inset-0 w-full h-full object-cover" />
+                          ) : (
+                            <div className="absolute inset-0 bg-gradient-to-tr from-[#2F3B0C] to-[#4E641A] flex items-center justify-center text-stone-200 font-bold text-lg font-serif">
+                              🌿 {cat.name} Collection
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-black/35 z-10" />
+                          <div className="absolute bottom-5 left-6 right-6 text-white z-20 space-y-2">
+                            <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#B8833E] bg-[#FDFBF7] py-0.5 px-2.5 rounded-full inline-block">
+                              Storefront Live Simulator
+                            </span>
+                            <h2 className="font-serif text-2xl font-bold tracking-tight">{cat.name}</h2>
+                            <p className="text-[11px] text-stone-200 leading-relaxed font-light max-w-xl line-clamp-2">{cat.description || 'Harvested directly from chemical-free organic farming soils.'}</p>
+                          </div>
+                        </div>
+
+                        {/* Product Grid Mockup */}
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-center border-b pb-2 border-[#EDE7D9]">
+                            <h4 className="font-serif text-xs font-bold text-[#37411A]">{linkedProducts.length} Items Available</h4>
+                            <span className="text-[9px] text-[#B8833E] font-extrabold uppercase tracking-widest">Suryodaya Farms Catalog</span>
+                          </div>
+
+                          {linkedProducts.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-left">
+                              {linkedProducts.map(p => (
+                                <div key={p.id} className="bg-white border border-[#EDE7D9] rounded-xl p-3 shadow-xxs space-y-2.5 flex flex-col justify-between">
+                                  <div className="aspect-square rounded-lg overflow-hidden bg-stone-50 border border-[#EDE7D9] relative shrink-0">
+                                    <img src={p.images?.[0]?.url || p.image} alt={p.name} className="w-full h-full object-cover" />
+                                    {p.isFeatured && (
+                                      <span className="absolute top-2 left-2 bg-[#B8833E] text-white text-[7px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded shadow-sm">
+                                        Featured
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="space-y-1 mt-2">
+                                    <h5 className="font-serif text-xs font-bold text-[#37411A] truncate leading-tight">{p.name}</h5>
+                                    <div className="flex justify-between items-center">
+                                      <strong className="text-xs text-[#4E641A] font-bold">₹{p.price}</strong>
+                                      <span className="text-[8px] text-stone-400 font-mono">SKU: {p.sku || 'N/A'}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="py-12 bg-white border border-[#EDE7D9] rounded-xl text-center text-stone-400 text-xs font-light">
+                              This collection currently has no linked products. Close this and click "Products" to assign items.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Category Performance Analytics Modal */}
+                {activeAnalyticsCategory && (() => {
+                  const cat = activeAnalyticsCategory;
+                  
+                  // Calculate dynamic statistics
+                  const linkedProducts = products.filter(p => 
+                    p.categories?.some(c => c.id === cat.id || c.slug === cat.slug)
+                  );
+                  
+                  const totalProducts = linkedProducts.length;
+                  const totalStock = linkedProducts.reduce((sum, p) => sum + (p.inventory || 0), 0);
+                  const outOfStockCount = linkedProducts.filter(p => (p.inventory || 0) <= 0).length;
+                  const averagePrice = totalProducts > 0 
+                    ? linkedProducts.reduce((sum, p) => sum + p.price, 0) / totalProducts
+                    : 0;
+                    
+                  let minPrice = 0;
+                  let maxPrice = 0;
+                  if (totalProducts > 0) {
+                    const prices = linkedProducts.map(p => p.price);
+                    minPrice = Math.min(...prices);
+                    maxPrice = Math.max(...prices);
+                  }
+                  
+                  const totalValue = linkedProducts.reduce((sum, p) => sum + (p.price * (p.inventory || 0)), 0);
+
+                  return (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 font-sans">
+                      <div className="bg-[#FAF7F2] border border-[#EDE7D9] rounded-[28px] max-w-xl w-full shadow-2xl p-6 relative animate-scale-up space-y-6 text-stone-700">
+                        <button 
+                          onClick={() => setActiveAnalyticsCategory(null)}
+                          className="absolute top-4 right-4 p-2 bg-stone-200/50 hover:bg-stone-300 text-stone-600 rounded-full border-none cursor-pointer text-sm font-bold w-8 h-8 flex items-center justify-center"
+                        >
+                          ✕
+                        </button>
+
+                        <div className="border-b pb-3 border-stone-200 text-left">
+                          <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#B8833E]">Collection Performance Analytics</span>
+                          <h3 className="font-serif text-lg font-bold text-[#2F3B0C] mt-0.5">{cat.name}</h3>
+                        </div>
+
+                        {/* Stats Widgets */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          <div className="bg-white border border-[#EDE7D9] p-3.5 rounded-2xl text-center">
+                            <span className="text-[7.5px] text-stone-400 font-extrabold uppercase tracking-wider block">Linked items</span>
+                            <strong className="text-[#2F3B0C] text-base font-bold block mt-1.5">{totalProducts}</strong>
+                          </div>
+                          <div className="bg-white border border-[#EDE7D9] p-3.5 rounded-2xl text-center">
+                            <span className="text-[7.5px] text-stone-400 font-extrabold uppercase tracking-wider block">Total stock</span>
+                            <strong className="text-[#2F3B0C] text-base font-bold block mt-1.5">{totalStock} units</strong>
+                          </div>
+                          <div className="bg-white border border-[#EDE7D9] p-3.5 rounded-2xl text-center">
+                            <span className="text-[7.5px] text-stone-400 font-extrabold uppercase tracking-wider block">Out of Stock</span>
+                            <strong className={`text-base font-bold block mt-1.5 ${outOfStockCount > 0 ? 'text-red-500' : 'text-[#4E641A]'}`}>{outOfStockCount}</strong>
+                          </div>
+                          <div className="bg-white border border-[#EDE7D9] p-3.5 rounded-2xl text-center">
+                            <span className="text-[7.5px] text-stone-400 font-extrabold uppercase tracking-wider block">Stock Value</span>
+                            <strong className="text-[#4E641A] text-base font-bold block mt-1.5">₹{totalValue.toLocaleString('en-IN')}</strong>
+                          </div>
+                        </div>
+
+                        {/* Pricing details */}
+                        <div className="bg-white border border-[#EDE7D9] rounded-2xl p-4.5 space-y-3.5 text-left text-xs">
+                          <span className="text-[8px] font-extrabold text-[#B8833E] uppercase tracking-widest block">Collection Price Spectrum</span>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div className="space-y-0.5">
+                              <span className="text-[8px] text-stone-400 uppercase font-semibold">Average Price</span>
+                              <strong className="block text-sm text-stone-800 font-bold">₹{Math.round(averagePrice)}</strong>
+                            </div>
+                            <div className="space-y-0.5">
+                              <span className="text-[8px] text-stone-400 uppercase font-semibold">Min Price</span>
+                              <strong className="block text-sm text-stone-800 font-bold">₹{minPrice}</strong>
+                            </div>
+                            <div className="space-y-0.5">
+                              <span className="text-[8px] text-stone-400 uppercase font-semibold">Max Price</span>
+                              <strong className="block text-sm text-stone-800 font-bold">₹{maxPrice}</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Advice box */}
+                        <div className="bg-[#4E641A]/5 border border-[#4E641A]/10 rounded-2xl p-4 text-left text-xs text-stone-600 space-y-1.5">
+                          <span className="text-[8px] font-extrabold text-[#4E641A] uppercase tracking-widest block">Collection Performance Insights</span>
+                          {totalProducts === 0 ? (
+                            <p className="leading-relaxed font-light">⚠️ This collection has zero products assigned. We recommend linking organic harvest staples to display this collection on your storefront.</p>
+                          ) : outOfStockCount > 0 ? (
+                            <p className="leading-relaxed font-light">🚨 Some items in this collection are out of stock. We recommend replenishing inventories of the affected products to prevent lost customer checkouts.</p>
+                          ) : (
+                            <p className="leading-relaxed font-light">✨ All products in this collection are currently in stock! The collection is optimized for customer sales and promotional campaigns.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
               </div>
             )}
 
@@ -5610,6 +7237,391 @@ export default function AdminDashboard() {
               </div>
             )}
 
+          </div>
+        )}
+
+        {/* TAB 6.5: CUSTOMER SUPPORT CRM */}
+        {activeTab === 'support-tickets' && (
+          <div className="space-y-8 animate-fade-in w-full text-left font-sans">
+            <div className="pb-6 border-b border-[#EDE7D9] text-left">
+              <span className="text-[9px] font-extrabold tracking-widest uppercase text-[#B8833E]">SUPPORT CRM DESK</span>
+              <h1 className="font-serif text-2xl md:text-3xl font-bold text-[#37411A]">Customer Support Tickets</h1>
+            </div>
+
+            {/* Metrics cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { label: 'Open Tickets', count: supportTickets.filter(t => t.status === 'OPEN').length, color: 'bg-gold-50 text-[#C68A2B] border-gold-200' },
+                { label: 'In Progress', count: supportTickets.filter(t => t.status === 'IN_PROGRESS').length, color: 'bg-amber-50 text-amber-600 border-amber-200' },
+                { label: 'Resolved', count: supportTickets.filter(t => t.status === 'RESOLVED').length, color: 'bg-green-50 text-green-755 border-green-200' },
+                { label: 'Closed', count: supportTickets.filter(t => t.status === 'CLOSED').length, color: 'bg-stone-50 text-stone-600 border-stone-200' }
+              ].map((m, i) => (
+                <div key={i} className={`p-4 rounded-2xl border text-center ${m.color} bg-white shadow-xxs flex flex-col justify-center items-center gap-1.5`}>
+                  <span className="text-[9px] font-extrabold uppercase tracking-wider text-stone-400">{m.label}</span>
+                  <span className="text-2xl font-serif font-extrabold">{m.count}</span>
+                </div>
+              ))}
+            </div>
+
+            {selectedSupportTicket ? (
+              // DETAIL WORKSPACE
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                
+                {/* Left side: Context details (order, shipment, customer) */}
+                <div className="lg:col-span-5 space-y-6">
+                  {/* Back button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate('/admin/support-tickets');
+                      setAdminReplyText('');
+                      setAdminReplyImage(null);
+                      setAdminReplyError(null);
+                    }}
+                    className="flex items-center gap-1.5 text-stone-500 hover:text-[#4E641A] font-sans text-xs font-bold uppercase tracking-wider transition-colors duration-300 cursor-pointer bg-transparent border-none p-0 group"
+                  >
+                    <FiArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-1" />
+                    Back to Tickets list
+                  </button>
+
+                  {/* Customer details card */}
+                  <div className="bg-white border border-[#EDE7D9] rounded-[24px] p-5 space-y-4 shadow-sm">
+                    <h3 className="font-serif text-sm font-bold text-[#2F3B0C] border-b pb-2 border-stone-100 flex items-center gap-2">
+                      <FiUser className="text-[#C68A2B]" /> Customer Profile
+                    </h3>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#4E641A]/10 text-[#4E641A] flex items-center justify-center font-serif font-bold text-sm overflow-hidden shrink-0">
+                        {selectedSupportTicket.user.avatarUrl ? (
+                          <img src={selectedSupportTicket.user.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                          selectedSupportTicket.user.name?.charAt(0).toUpperCase() || 'C'
+                        )}
+                      </div>
+                      <div className="text-left min-w-0">
+                        <h4 className="font-sans text-xs font-bold text-stone-850 truncate">{selectedSupportTicket.user.name || 'Member'}</h4>
+                        <p className="text-[10px] text-stone-400 font-semibold truncate">{selectedSupportTicket.user.email}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Shipment & Order details card */}
+                  {selectedSupportTicket.order ? (
+                    <div className="bg-white border border-[#EDE7D9] rounded-[24px] p-5 space-y-4 shadow-sm">
+                      <h3 className="font-serif text-sm font-bold text-[#2F3B0C] border-b pb-2 border-stone-100 flex items-center gap-2">
+                        <FiShoppingBag className="text-[#C68A2B]" /> Shipment Order Info
+                      </h3>
+                      <div className="space-y-3.5 text-xs text-stone-600 font-medium">
+                        <div className="flex justify-between">
+                          <span>Order Reference:</span>
+                          <span className="font-mono font-bold text-stone-800">#{selectedSupportTicket.order.orderNumber}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Order Date:</span>
+                          <span className="font-bold text-stone-800">
+                            {new Date(selectedSupportTicket.order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Total Amount:</span>
+                          <span className="font-bold text-[#4E641A]">₹{selectedSupportTicket.order.totalAmount}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Shipment Status:</span>
+                          <span className="bg-[#4E641A]/10 text-[#4E641A] px-2 py-0.5 rounded-full font-bold uppercase text-[8px]">
+                            {selectedSupportTicket.order.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Address coordinates details */}
+                      {selectedSupportTicket.order.shippingAddress && (
+                        <div className="pt-3 border-t border-stone-100 text-[10px] text-stone-500 space-y-1">
+                          <span className="font-extrabold uppercase tracking-wider text-[#C68A2B] block">Delivery Coordinates</span>
+                          <div className="leading-relaxed font-semibold bg-[#FDFBF7] p-2.5 rounded-xl border border-[#EDE7D9]/60">
+                            <strong>{selectedSupportTicket.order.shippingAddress.recipientName}</strong> • {selectedSupportTicket.order.shippingAddress.phone} <br />
+                            {selectedSupportTicket.order.shippingAddress.street}, {selectedSupportTicket.order.shippingAddress.city}, {selectedSupportTicket.order.shippingAddress.state} – {selectedSupportTicket.order.shippingAddress.postalCode}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Items breakdown */}
+                      <div className="pt-3 border-t border-stone-100 space-y-2">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#C68A2B] block">Harvest Items</span>
+                        <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1 no-scrollbar text-stone-605">
+                          {selectedSupportTicket.order.orderItems?.map((item, idx) => (
+                            <div key={idx} className="flex justify-between items-center bg-[#F9F6F0] p-2 rounded-xl border border-[#EAE4D8] gap-3 text-[10px] font-semibold">
+                              <span className="truncate">{item.product?.name} x{item.quantity}</span>
+                              <span className="font-bold text-[#2F3B0C] shrink-0">₹{item.price * item.quantity}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white border border-[#EDE7D9] rounded-[24px] p-5 text-center text-stone-400 text-xs shadow-sm">
+                      No order details linked to this ticket.
+                    </div>
+                  )}
+
+                  {/* Settings / Controls */}
+                  <div className="bg-white border border-[#EDE7D9] rounded-[24px] p-5 space-y-4 shadow-sm">
+                    <h3 className="font-serif text-sm font-bold text-[#2F3B0C] border-b pb-2 border-stone-100 flex items-center gap-2">
+                      <FiSettings className="text-[#C68A2B]" /> Ticket Controls
+                    </h3>
+                    <div className="space-y-4 text-xs font-semibold text-stone-605">
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-extrabold uppercase tracking-wider text-stone-400">Change Status</label>
+                        <select
+                          value={selectedSupportTicket.status}
+                          onChange={(e) => handleUpdateTicketStatusOrPriority(selectedSupportTicket.id, e.target.value, null)}
+                          className="w-full p-2.5 bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl text-stone-650 focus:outline-none focus:border-[#4E641A]"
+                        >
+                          <option value="OPEN">Open</option>
+                          <option value="IN_PROGRESS">In Progress</option>
+                          <option value="RESOLVED">Resolved</option>
+                          <option value="CLOSED">Closed</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[8px] font-extrabold uppercase tracking-wider text-stone-400">Set Priority</label>
+                        <select
+                          value={selectedSupportTicket.priority}
+                          onChange={(e) => handleUpdateTicketStatusOrPriority(selectedSupportTicket.id, null, e.target.value)}
+                          className="w-full p-2.5 bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl text-stone-650 focus:outline-none focus:border-[#4E641A]"
+                        >
+                          <option value="LOW">Low</option>
+                          <option value="MEDIUM">Medium</option>
+                          <option value="HIGH">High</option>
+                          <option value="URGENT">Urgent</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right side: Conversation timeline & editor */}
+                <div className="lg:col-span-7 space-y-6">
+                  {/* Timeline conversation card */}
+                  <div className="bg-white border border-[#EDE7D9] rounded-[28px] p-6 shadow-sm flex flex-col h-[450px]">
+                    <div className="border-b pb-3 border-stone-100 flex justify-between items-baseline mb-4">
+                      <h3 className="font-serif text-base font-bold text-[#2F3B0C]">
+                        Conversation Timeline
+                      </h3>
+                      <span className="text-[9px] font-extrabold text-[#C68A2B] uppercase tracking-wider">
+                        {selectedSupportTicket.ticketNumber}
+                      </span>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-hide">
+                      {selectedSupportTicket.messages?.map((msg, idx) => {
+                        const isCustomer = msg.role === 'CUSTOMER';
+                        return (
+                          <div
+                            key={idx}
+                            className={`flex ${isCustomer ? 'justify-start' : 'justify-end'} w-full`}
+                          >
+                            <div className={`max-w-[80%] space-y-1 ${isCustomer ? 'text-left' : 'text-right'}`}>
+                              <span className="text-[8px] font-extrabold uppercase tracking-widest text-stone-400 block px-1">
+                                {isCustomer ? 'Customer' : 'Staff Admin'} • {new Date(msg.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              <div className={`p-4 rounded-[20px] shadow-xxs ${
+                                isCustomer
+                                  ? 'bg-[#F9F6F0] border border-[#EAE4D8] text-stone-850 rounded-tl-none'
+                                  : 'bg-[#4E641A] text-white rounded-tr-none'
+                              }`}>
+                                <p className="text-xs font-semibold leading-relaxed whitespace-pre-wrap">{msg.message}</p>
+                                {msg.imageUrl && (
+                                  <div className="mt-2 rounded-lg overflow-hidden border max-w-xs cursor-zoom-in inline-block" onClick={() => window.open(msg.imageUrl, '_blank')}>
+                                    <img src={msg.imageUrl} alt="Customer attachment" className="max-h-40 object-cover w-full" />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Staff reply box */}
+                  <form onSubmit={handleAdminSendReply} className="bg-white border border-[#EDE7D9] rounded-[24px] p-5 shadow-sm space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#B8833E] block">Write response to customer</label>
+                      <textarea
+                        value={adminReplyText}
+                        onChange={(e) => setAdminReplyText(e.target.value)}
+                        placeholder="Type response details here..."
+                        rows={3}
+                        required={!adminReplyImage}
+                        className="w-full p-3 border border-[#EAE4D8] rounded-xl text-stone-700 font-sans focus:outline-none focus:ring-1 focus:ring-[#4E641A]"
+                      />
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center justify-center px-4 py-2 border-2 border-dashed border-[#EDE7D9] hover:border-[#4E641A] rounded-xl cursor-pointer text-stone-600 transition shrink-0">
+                          <span className="text-[10px] uppercase tracking-wider font-extrabold text-[#4E641A]">Add Image</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleAdminReplyImageChange}
+                            className="hidden"
+                          />
+                        </label>
+                        {adminReplyImage && (
+                          <div className="relative w-12 h-12 rounded-lg border border-[#EDE7D9] overflow-hidden shrink-0">
+                            <img src={adminReplyImage} alt="Reply preview" className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => setAdminReplyImage(null)}
+                              className="absolute -top-1 -right-1 bg-red-655 text-white rounded-full w-4 h-4 flex items-center justify-center text-[8px] font-extrabold cursor-pointer border-none"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {adminReplyError && (
+                        <div className="text-[10px] text-red-655 font-semibold bg-red-50 p-2 rounded-lg border border-red-100 max-w-xs">
+                          {adminReplyError}
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={isSubmittingAdminReply}
+                        className="w-full sm:w-auto px-6 py-3 bg-[#4E641A] hover:bg-[#2F3B0C] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition duration-300 border-none cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isSubmittingAdminReply ? 'Sending response...' : 'Save & Send Reply'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            ) : (
+              // TICKET MANAGEMENT LISTING & SEARCH FILTERS
+              <div className="space-y-6">
+                {/* Search & filters bar */}
+                <div className="bg-white border border-[#EDE7D9] rounded-[24px] p-5 shadow-sm space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+                    
+                    {/* Search query */}
+                    <div className="sm:col-span-6 relative">
+                      <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 text-sm" />
+                      <input
+                        type="text"
+                        placeholder="Search support tickets by ID, subject, customer name/email..."
+                        value={supportSearchQuery}
+                        onChange={(e) => setSupportSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl text-xs font-semibold text-stone-700 placeholder-stone-400 focus:outline-none focus:border-[#4E641A]"
+                      />
+                    </div>
+
+                    {/* Status filter */}
+                    <div className="sm:col-span-3">
+                      <select
+                        value={supportStatusFilter}
+                        onChange={(e) => setSupportStatusFilter(e.target.value)}
+                        className="w-full p-3 bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl text-xs font-semibold text-stone-605 focus:outline-none focus:border-[#4E641A]"
+                      >
+                        <option value="ALL">All Statuses</option>
+                        <option value="OPEN">Open</option>
+                        <option value="IN_PROGRESS">In Progress</option>
+                        <option value="RESOLVED">Resolved</option>
+                        <option value="CLOSED">Closed</option>
+                      </select>
+                    </div>
+
+                    {/* Priority filter */}
+                    <div className="sm:col-span-3">
+                      <select
+                        value={supportPriorityFilter}
+                        onChange={(e) => setSupportPriorityFilter(e.target.value)}
+                        className="w-full p-3 bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl text-xs font-semibold text-stone-650 focus:outline-none focus:border-[#4E641A]"
+                      >
+                        <option value="ALL">All Priorities</option>
+                        <option value="LOW">Low</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="HIGH">High</option>
+                        <option value="URGENT">Urgent</option>
+                      </select>
+                    </div>
+
+                  </div>
+                </div>
+
+                {/* Tickets grid layout */}
+                {supportTickets.length === 0 ? (
+                  <EmptyState
+                    title="🎫 No Support Tickets Found"
+                    description="No tickets match the selected filters or search parameters."
+                    illustration="🎫"
+                  />
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {supportTickets.map((ticket) => (
+                      <div
+                        key={ticket.id}
+                        className="bg-white border border-[#EDE7D9] rounded-[24px] p-5 shadow-sm hover:shadow-md transition duration-300 flex flex-col justify-between gap-4 text-left font-sans"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="font-mono text-[10px] font-extrabold text-[#B8833E] bg-[#B8833E]/10 px-2 py-0.5 rounded border border-[#B8833E]/20">
+                              {ticket.ticketNumber}
+                            </span>
+                            <div className="flex gap-1.5">
+                              <span className={`text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                                ticket.status === 'RESOLVED'
+                                  ? 'bg-green-50 text-green-755 border-green-200'
+                                  : ticket.status === 'CLOSED'
+                                  ? 'bg-stone-50 text-stone-600 border-stone-200'
+                                  : ticket.status === 'IN_PROGRESS'
+                                  ? 'bg-amber-50 text-amber-600 border-amber-200'
+                                  : 'bg-gold-50 text-[#C68A2B] border-gold-200'
+                              }`}>
+                                {ticket.status.replace('_', ' ')}
+                              </span>
+                              <span className={`text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                                ticket.priority === 'URGENT'
+                                  ? 'bg-red-50 text-red-655 border-red-100 animate-pulse'
+                                  : ticket.priority === 'HIGH'
+                                  ? 'bg-orange-50 text-orange-600 border-orange-100'
+                                  : ticket.priority === 'MEDIUM'
+                                  ? 'bg-green-50 text-[#4E641A] border-green-150'
+                                  : 'bg-stone-50 text-stone-500 border-stone-200'
+                              }`}>
+                                {ticket.priority}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5 text-left">
+                            <h4 className="font-serif text-sm font-bold text-[#37411A] line-clamp-1">{ticket.subject}</h4>
+                            <div className="text-[10px] text-stone-500 leading-normal font-semibold space-y-0.5">
+                              <p>Customer: <strong className="text-stone-700">{ticket.user?.name || 'Member'}</strong> ({ticket.user?.email})</p>
+                              {ticket.order && <p>Order Ref: <strong className="text-stone-700">#{ticket.order.orderNumber}</strong></p>}
+                              <p className="text-[9px] text-stone-400 mt-1 font-medium">Created on {new Date(ticket.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigate(`/admin/support-tickets/${ticket.id}`);
+                          }}
+                          className="w-full py-2.5 bg-[#4E641A] hover:bg-[#2F3B0C] text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition duration-300 border-none cursor-pointer"
+                        >
+                          Manage Ticket Feed
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -5819,6 +7831,48 @@ export default function AdminDashboard() {
                     </div>
                   </div>
 
+                  {/* Shipping & Delivery Configuration */}
+                  <div className="space-y-4 pt-4 border-t border-[#EDE7D9] mt-4">
+                    <span className="font-serif text-xs font-bold text-stone-700 block text-left">Shipping & Delivery Configurations</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1 flex flex-col text-left">
+                        <label className="text-[7px] font-extrabold text-stone-400">Free Delivery Weight Threshold (in KG)</label>
+                        <input 
+                          type="number" 
+                          step="0.1"
+                          min="0"
+                          value={settingsForm.freeDeliveryThreshold} 
+                          onChange={(e) => setSettingsForm({ ...settingsForm, freeDeliveryThreshold: e.target.value })}
+                          className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl p-2 text-stone-600 focus:outline-none focus:border-[#4E641A] font-sans" 
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1 flex flex-col text-left">
+                        <label className="text-[7px] font-extrabold text-stone-400">Standard Shipping Charge (in ₹)</label>
+                        <input 
+                          type="number" 
+                          min="0"
+                          value={settingsForm.shippingCharge} 
+                          onChange={(e) => setSettingsForm({ ...settingsForm, shippingCharge: e.target.value })}
+                          className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl p-2 text-stone-600 focus:outline-none focus:border-[#4E641A] font-sans" 
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1 flex flex-col text-left">
+                      <label className="text-[7px] font-extrabold text-stone-400">Serviceable States (Comma-separated)</label>
+                      <input 
+                        type="text" 
+                        value={settingsForm.serviceableStates} 
+                        onChange={(e) => setSettingsForm({ ...settingsForm, serviceableStates: e.target.value })}
+                        className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl p-2 text-stone-600 focus:outline-none focus:border-[#4E641A] font-sans" 
+                        placeholder="e.g. Telangana, Andhra Pradesh"
+                        required
+                      />
+                      <span className="text-[7px] text-stone-400 font-sans italic">Separate multiple states with commas (e.g. Telangana, Andhra Pradesh).</span>
+                    </div>
+                  </div>
+
                   <div className="flex items-center space-x-3 text-left pt-3 border-t border-[#EDE7D9] mt-4 select-none">
                     <input
                       type="checkbox"
@@ -5998,23 +8052,25 @@ export default function AdminDashboard() {
             )}
 
             {/* Coupons search filter */}
-            <div className="flex justify-between items-center bg-[#FDFBF7] border border-[#EDE7D9] rounded-2xl px-4 py-2 max-w-md">
-              <FiSearch className="text-stone-450 mr-2 shrink-0" />
-              <input
-                type="text"
-                placeholder="Search coupons by campaign code..."
-                value={couponSearchQuery}
-                onChange={(e) => setCouponSearchQuery(e.target.value)}
-                className="w-full bg-transparent border-none focus:outline-none text-xs text-[#37411A] placeholder-stone-400 py-1.5"
-              />
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white border border-[#EDE7D9] p-4 rounded-2xl shadow-sm select-none mb-6">
+              <div className="relative w-full sm:w-72">
+                <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                <input
+                  type="text"
+                  placeholder="Search promo codes..."
+                  value={couponSearchQuery}
+                  onChange={(e) => setCouponSearchQuery(e.target.value)}
+                  className="w-full bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-2 px-10 focus:outline-none focus:border-[#4E641A] text-xs text-[#37411A]"
+                />
+              </div>
             </div>
 
             {/* Coupons listing */}
             {coupons.length === 0 ? (
               <EmptyState
-                title="🏷️ No Coupons Configured"
+                title="No Coupons Configured"
                 description="Launch new promotion codes to drive seasonal conversions and reward loyalty."
-                illustration="🏷️"
+                illustration="🏷"
                 actionLabel="Create Voucher"
                 onAction={() => {
                   resetCouponForm();
@@ -6022,95 +8078,184 @@ export default function AdminDashboard() {
                 }}
               />
             ) : (
-              <div className="bg-white border border-[#EDE7D9] rounded-[28px] overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left font-sans text-xs">
-                    <thead>
-                      <tr className="bg-[#EDE7D9]/40 border-b border-[#EDE7D9] text-[#37411A] font-extrabold uppercase tracking-wider text-[9px]">
-                        <th className="py-4 px-6">Voucher Code</th>
-                        <th className="py-4 px-6">Discount Value</th>
-                        <th className="py-4 px-6">Min Order</th>
-                        <th className="py-4 px-6">Usage Progress</th>
-                        <th className="py-4 px-6">Expiry</th>
-                        <th className="py-4 px-6">Status</th>
-                        <th className="py-4 px-6 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#EDE7D9]/45 text-stone-600">
-                      {coupons.filter(c => c.code.toLowerCase().includes(couponSearchQuery.toLowerCase())).map((c) => {
-                        const isExpired = new Date() > new Date(c.expiryDate);
-                        const usageCount = c._count?.orders || 0;
-                        const limitText = c.usageLimit === -1 || c.usageLimit === null ? 'Unlimited' : `${usageCount} / ${c.usageLimit}`;
-                        const isLimitReached = c.usageLimit !== -1 && c.usageLimit !== null && usageCount >= c.usageLimit;
-                        
-                        return (
-                          <tr key={c.id} className="hover:bg-[#EDE7D9]/10 transition duration-150">
-                            <td className="py-4 px-6 font-mono font-bold text-[#2F3B0C]">
-                              <span className="bg-[#EDE7D9]/30 border border-[#EDE7D9] px-2.5 py-1 rounded-[6px]">
-                                {c.code}
-                              </span>
-                            </td>
-                            <td className="py-4 px-6 font-bold text-[#37411A]">
+              <div className="space-y-4">
+                {/* Desktop Table View */}
+                <div className="hidden lg:block bg-white border border-[#EDE7D9] rounded-[28px] overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left font-sans text-xs">
+                      <thead>
+                        <tr className="bg-[#EDE7D9]/40 border-b border-[#EDE7D9] text-[#37411A] font-extrabold uppercase tracking-wider text-[9px]">
+                          <th className="py-4 px-6">Voucher Code</th>
+                          <th className="py-4 px-6">Discount Value</th>
+                          <th className="py-4 px-6">Min Order</th>
+                          <th className="py-4 px-6">Usage Progress</th>
+                          <th className="py-4 px-6">Expiry</th>
+                          <th className="py-4 px-6">Status</th>
+                          <th className="py-4 px-6 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#EDE7D9]/45 text-stone-600">
+                        {coupons.filter(c => c.code.toLowerCase().includes(couponSearchQuery.toLowerCase())).map((c) => {
+                          const isExpired = new Date() > new Date(c.expiryDate);
+                          const usageCount = c._count?.orders || 0;
+                          const limitText = c.usageLimit === -1 || c.usageLimit === null ? 'Unlimited' : `${usageCount} / ${c.usageLimit}`;
+                          const isLimitReached = c.usageLimit !== -1 && c.usageLimit !== null && usageCount >= c.usageLimit;
+                          
+                          return (
+                            <tr key={c.id} className="hover:bg-[#EDE7D9]/10 transition duration-150">
+                              <td className="py-4 px-6 font-mono font-bold text-[#2F3B0C]">
+                                <span className="bg-[#EDE7D9]/30 border border-[#EDE7D9] px-2.5 py-1 rounded-[6px]">
+                                  {c.code}
+                                </span>
+                              </td>
+                              <td className="py-4 px-6 font-bold text-[#37411A]">
+                                {c.discountType === 'PERCENTAGE' ? `${c.discountValue}% Off` : `₹${c.discountValue} Flat`}
+                              </td>
+                              <td className="py-4 px-6">
+                                ₹{c.minOrderValue}
+                              </td>
+                              <td className="py-4 px-6">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${isLimitReached ? 'bg-red-50 text-red-750 font-bold' : 'bg-[#EDE7D9]/40'}`}>
+                                  {limitText}
+                                </span>
+                              </td>
+                              <td className="py-4 px-6 font-medium">
+                                {new Date(c.expiryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                {isExpired && <span className="text-[9px] font-bold text-red-650 ml-1.5 uppercase">Expired</span>}
+                              </td>
+                              <td className="py-4 px-6">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleCouponStatus(c)}
+                                  className={`px-3 py-1 rounded-full text-[9px] font-extrabold uppercase cursor-pointer border transition-all ${
+                                    c.isActive && !isExpired && !isLimitReached
+                                      ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100'
+                                      : 'bg-red-50 text-red-655 border-red-200 hover:bg-red-100'
+                                  }`}
+                                >
+                                  {c.isActive && !isExpired && !isLimitReached ? 'Active' : 'Disabled'}
+                                </button>
+                              </td>
+                              <td className="py-4 px-6 text-right flex items-center justify-end gap-2.5">
+                                <button
+                                  onClick={() => {
+                                    setCouponForm({
+                                      id: c.id,
+                                      code: c.code,
+                                      discountType: c.discountType,
+                                      discountValue: c.discountValue.toString(),
+                                      minOrderValue: c.minOrderValue.toString(),
+                                      expiryDate: c.expiryDate,
+                                      usageLimit: c.usageLimit.toString(),
+                                      isActive: c.isActive
+                                    });
+                                    setShowCouponModal(true);
+                                  }}
+                                  className="p-2 border border-stone-200 hover:border-[#4E641A]/30 text-stone-500 hover:text-[#4E641A] rounded-xl transition cursor-pointer bg-white"
+                                  title="Edit Promotion"
+                                >
+                                  <FiEdit2 size={13} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteCoupon(c.id)}
+                                  className="p-2 border border-red-255 hover:bg-red-55 text-red-655 rounded-xl transition cursor-pointer bg-white"
+                                  title="Delete Promotion"
+                                >
+                                  <FiTrash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Mobile Card List View */}
+                <div className="block lg:hidden space-y-4">
+                  {coupons.filter(c => c.code.toLowerCase().includes(couponSearchQuery.toLowerCase())).map((c) => {
+                    const isExpired = new Date() > new Date(c.expiryDate);
+                    const usageCount = c._count?.orders || 0;
+                    const limitText = c.usageLimit === -1 || c.usageLimit === null ? 'Unlimited' : `${usageCount} / ${c.usageLimit}`;
+                    const isLimitReached = c.usageLimit !== -1 && c.usageLimit !== null && usageCount >= c.usageLimit;
+                    
+                    return (
+                      <div key={c.id} className="bg-white border border-[#EDE7D9] rounded-2xl p-4.5 space-y-3.5 shadow-sm text-left relative">
+                        <div className="flex justify-between items-center">
+                          <span className="font-mono font-bold text-[#2F3B0C] bg-[#EDE7D9]/30 border border-[#EDE7D9] px-2.5 py-1 rounded-[6px] text-xs">
+                            {c.code}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleCouponStatus(c)}
+                            className={`px-3 py-1 rounded-full text-[9px] font-extrabold uppercase cursor-pointer border transition-all ${
+                              c.isActive && !isExpired && !isLimitReached
+                                ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100'
+                                : 'bg-red-50 text-red-655 border-red-200 hover:bg-red-100'
+                            }`}
+                          >
+                            {c.isActive && !isExpired && !isLimitReached ? 'Active' : 'Disabled'}
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 text-xs font-sans text-stone-500">
+                          <div className="space-y-0.5">
+                            <span className="text-[8px] text-stone-400 font-extrabold uppercase tracking-wider block">Discount</span>
+                            <strong className="text-stone-800 font-bold text-sm">
                               {c.discountType === 'PERCENTAGE' ? `${c.discountValue}% Off` : `₹${c.discountValue} Flat`}
-                            </td>
-                            <td className="py-4 px-6">
-                              ₹{c.minOrderValue}
-                            </td>
-                            <td className="py-4 px-6">
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${isLimitReached ? 'bg-red-50 text-red-750 font-bold' : 'bg-[#EDE7D9]/40'}`}>
-                                {limitText}
-                              </span>
-                            </td>
-                            <td className="py-4 px-6 font-medium">
+                            </strong>
+                          </div>
+                          <div className="space-y-0.5">
+                            <span className="text-[8px] text-stone-400 font-extrabold uppercase tracking-wider block">Min Order</span>
+                            <strong className="text-stone-800 font-bold text-sm">₹{c.minOrderValue}</strong>
+                          </div>
+                          <div className="space-y-0.5 mt-1">
+                            <span className="text-[8px] text-stone-400 font-extrabold uppercase tracking-wider block">Usage Limit</span>
+                            <strong className={`text-[10px] font-bold inline-block px-1.5 py-0.5 rounded ${isLimitReached ? 'bg-red-50 text-red-755' : 'bg-[#EDE7D9]/40 text-stone-705'}`}>
+                              {limitText}
+                            </strong>
+                          </div>
+                          <div className="space-y-0.5 mt-1">
+                            <span className="text-[8px] text-stone-400 font-extrabold uppercase tracking-wider block">Expiry Date</span>
+                            <strong className="text-stone-750 font-semibold text-xs">
                               {new Date(c.expiryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                              {isExpired && <span className="text-[9px] font-bold text-red-650 ml-1.5 uppercase">Expired</span>}
-                            </td>
-                            <td className="py-4 px-6">
-                              <button
-                                type="button"
-                                onClick={() => handleToggleCouponStatus(c)}
-                                className={`px-3 py-1 rounded-full text-[9px] font-extrabold uppercase cursor-pointer border transition-all ${
-                                  c.isActive && !isExpired && !isLimitReached
-                                    ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100'
-                                    : 'bg-red-50 text-red-650 border-red-200 hover:bg-red-100'
-                                }`}
-                              >
-                                {c.isActive && !isExpired && !isLimitReached ? 'Active' : 'Disabled'}
-                              </button>
-                            </td>
-                            <td className="py-4 px-6 text-right flex items-center justify-end gap-2.5">
-                              <button
-                                onClick={() => {
-                                  setCouponForm({
-                                    id: c.id,
-                                    code: c.code,
-                                    discountType: c.discountType,
-                                    discountValue: c.discountValue.toString(),
-                                    minOrderValue: c.minOrderValue.toString(),
-                                    expiryDate: c.expiryDate,
-                                    usageLimit: c.usageLimit.toString(),
-                                    isActive: c.isActive
-                                  });
-                                  setShowCouponModal(true);
-                                }}
-                                className="p-2 border border-stone-200 hover:border-[#4E641A]/30 text-stone-500 hover:text-[#4E641A] rounded-xl transition cursor-pointer bg-white"
-                                title="Edit Promotion"
-                              >
-                                <FiEdit2 size={13} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteCoupon(c.id)}
-                                className="p-2 border border-red-250 hover:bg-red-55 text-red-650 rounded-xl transition cursor-pointer bg-white"
-                                title="Delete Promotion"
-                              >
-                                <FiTrash2 size={13} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                              {isExpired && <span className="text-[8px] font-bold text-red-655 ml-1 block uppercase mt-0.5">Expired</span>}
+                            </strong>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 justify-end pt-3 border-t border-stone-100">
+                          <button
+                            onClick={() => {
+                              setCouponForm({
+                                  id: c.id,
+                                  code: c.code,
+                                  discountType: c.discountType,
+                                  discountValue: c.discountValue.toString(),
+                                  minOrderValue: c.minOrderValue.toString(),
+                                  expiryDate: c.expiryDate,
+                                  usageLimit: c.usageLimit.toString(),
+                                  isActive: c.isActive
+                              });
+                              setShowCouponModal(true);
+                            }}
+                            className="p-2 border border-stone-200 hover:border-[#4E641A]/30 text-stone-500 hover:text-[#4E641A] rounded-xl transition cursor-pointer bg-white"
+                            title="Edit Promotion"
+                          >
+                            <FiEdit2 size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCoupon(c.id)}
+                            className="p-2 border border-red-250 hover:bg-red-55 text-red-655 rounded-xl transition cursor-pointer bg-white"
+                            title="Delete Promotion"
+                          >
+                            <FiTrash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -6134,64 +8279,120 @@ export default function AdminDashboard() {
                 illustration="📦"
               />
             ) : (
-              <div className="bg-white border border-[#EDE7D9] rounded-[28px] overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-xs text-stone-500 font-sans">
-                    <thead className="bg-[#FDFBF7] border-b border-[#EDE7D9] text-[#B8833E]">
-                      <tr>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-20">Product Image</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Product Name</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Category</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Average Rating</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Total Reviews</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none text-amber-600">Pending</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none text-[#4E641A]">Approved</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#EDE7D9]">
-                      {productsReviewSummary.map((p) => (
-                        <tr key={p.id} className="hover:bg-[#FDFBF7] transition">
-                          <td className="py-4 px-6">
-                            <img
-                              src={p.image || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=100'}
-                              alt={p.name}
-                              className="w-10 h-10 object-cover rounded-lg border border-[#EDE7D9] bg-stone-50"
-                            />
-                          </td>
-                          <td className="py-4 px-6 font-serif text-[#37411A] font-bold text-sm">
-                            {p.name}
-                          </td>
-                          <td className="py-4 px-6 font-bold text-[#37411A]">{p.category}</td>
-                          <td className="py-4 px-6 font-sans">
-                            <div className="flex items-center gap-1">
-                              <div className="flex text-amber-500">
-                                {[...Array(5)].map((_, i) => (
-                                  <FiStar key={i} className={`w-3.5 h-3.5 ${i < Math.round(p.averageRating) ? 'fill-current' : 'text-stone-200'}`} />
-                                ))}
-                              </div>
-                              <span className="font-bold text-stone-600 ml-1">{p.averageRating > 0 ? p.averageRating : '0.0'}</span>
-                            </div>
-                          </td>
-                          <td className="py-4 px-6 font-sans font-bold text-[#37411A]">{p.totalReviews} Reviews</td>
-                          <td className="py-4 px-6 font-sans font-bold text-amber-600">{p.pendingReviews} Pending</td>
-                          <td className="py-4 px-6 font-sans font-bold text-[#4E641A]">{p.approvedReviews} Approved</td>
-                          <td className="py-4 px-6 text-right">
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/admin/reviews/${p.id}`)}
-                              className="px-4 py-2 bg-[#4E641A] hover:bg-[#37411A] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition flex items-center gap-1.5 ml-auto cursor-pointer border-none shadow-sm font-sans"
-                            >
-                              <span>Manage</span>
-                              <span>→</span>
-                            </button>
-                          </td>
+              <>
+                {/* Desktop View */}
+                <div className="hidden lg:block bg-white border border-[#EDE7D9] rounded-[28px] overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-xs text-stone-500 font-sans">
+                      <thead className="bg-[#FDFBF7] border-b border-[#EDE7D9] text-[#B8833E]">
+                        <tr>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-20">Product Image</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Product Name</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Category</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Average Rating</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Total Reviews</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none text-amber-600">Pending</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none text-[#4E641A]">Approved</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none text-right">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-[#EDE7D9]">
+                        {productsReviewSummary.map((p) => (
+                          <tr key={p.id} className="hover:bg-[#FDFBF7] transition">
+                            <td className="py-4 px-6">
+                              <img
+                                src={p.image || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=100'}
+                                alt={p.name}
+                                className="w-10 h-10 object-cover rounded-lg border border-[#EDE7D9] bg-stone-50"
+                              />
+                            </td>
+                            <td className="py-4 px-6 font-serif text-[#37411A] font-bold text-sm">
+                              {p.name}
+                            </td>
+                            <td className="py-4 px-6 font-bold text-[#37411A]">{p.category}</td>
+                            <td className="py-4 px-6 font-sans">
+                              <div className="flex items-center gap-1">
+                                <div className="flex text-amber-500">
+                                  {[...Array(5)].map((_, i) => (
+                                    <FiStar key={i} className={`w-3.5 h-3.5 ${i < Math.round(p.averageRating) ? 'fill-current' : 'text-stone-200'}`} />
+                                  ))}
+                                </div>
+                                <span className="font-bold text-stone-600 ml-1">{p.averageRating > 0 ? p.averageRating : '0.0'}</span>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 font-sans font-bold text-[#37411A]">{p.totalReviews} Reviews</td>
+                            <td className="py-4 px-6 font-sans font-bold text-amber-600">{p.pendingReviews} Pending</td>
+                            <td className="py-4 px-6 font-sans font-bold text-[#4E641A]">{p.approvedReviews} Approved</td>
+                            <td className="py-4 px-6 text-right">
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/admin/reviews/${p.id}`)}
+                                className="px-4 py-2 bg-[#4E641A] hover:bg-[#37411A] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition flex items-center gap-1.5 ml-auto cursor-pointer border-none shadow-sm font-sans"
+                              >
+                                <span>Manage</span>
+                                <span>→</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+
+                {/* Mobile Card List View */}
+                <div className="block lg:hidden space-y-4">
+                  {productsReviewSummary.map((p) => (
+                    <div key={p.id} className="bg-white border border-[#EDE7D9] rounded-2xl p-4.5 space-y-3.5 shadow-sm text-left flex flex-col">
+                      <div className="flex items-start gap-3.5">
+                        <img
+                          src={p.image || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=100'}
+                          alt={p.name}
+                          className="w-16 h-16 object-cover rounded-xl border border-[#EDE7D9] bg-stone-50 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <span className="text-[10px] font-bold text-[#B8833E] uppercase tracking-wider block">{p.category}</span>
+                          <h3 className="font-serif text-sm font-bold text-[#37411A] leading-snug truncate">{p.name}</h3>
+                          <div className="flex items-center gap-1">
+                            <div className="flex text-amber-500">
+                              {[...Array(5)].map((_, i) => (
+                                <FiStar key={i} className={`w-3 h-3 ${i < Math.round(p.averageRating) ? 'fill-current' : 'text-stone-200'}`} />
+                              ))}
+                            </div>
+                            <span className="font-bold text-[11px] text-stone-500 ml-0.5">{p.averageRating > 0 ? p.averageRating : '0.0'}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-2 bg-[#FDFBF7] border border-[#EDE7D9]/60 rounded-xl p-2.5 text-center text-xs font-sans">
+                        <div>
+                          <span className="text-[8px] text-stone-400 font-bold uppercase block">Total</span>
+                          <span className="font-bold text-[#37411A] text-[11px]">{p.totalReviews}</span>
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-amber-500 font-bold uppercase block">Pending</span>
+                          <span className="font-bold text-amber-600 text-[11px]">{p.pendingReviews}</span>
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-[#4E641A] font-bold uppercase block">Approved</span>
+                          <span className="font-bold text-[#4E641A] text-[11px]">{p.approvedReviews}</span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-stone-105">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/admin/reviews/${p.id}`)}
+                          className="w-full py-2.5 bg-[#4E641A] hover:bg-[#37411A] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer border-none shadow-sm font-sans"
+                        >
+                          <span>Manage Reviews</span>
+                          <span>→</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}
@@ -6394,120 +8595,230 @@ export default function AdminDashboard() {
                 illustration="⭐"
               />
             ) : (
-              <div className="bg-white border border-[#EDE7D9] rounded-[28px] overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-xs text-stone-500 font-sans">
-                    <thead className="bg-[#FDFBF7] border-b border-[#EDE7D9] text-[#B8833E]">
-                      <tr>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none font-bold">Customer Name</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-24 font-bold">Rating</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none font-bold">Review Title</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none font-bold">Review Text</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none font-bold">Submitted Date</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-24 font-bold">Status</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none text-right font-bold">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#EDE7D9]">
-                      {filteredReviews.map((rev) => (
-                        <tr key={rev.id} className="hover:bg-[#FDFBF7] transition">
-                          <td className="py-4 px-6 font-bold text-[#37411A]">{rev.customerName || 'Anonymous'}</td>
-                          <td className="py-4 px-6 font-sans">
-                            <div className="flex text-amber-500 font-sans">
-                              {[...Array(5)].map((_, i) => (
-                                <FiStar key={i} className={`w-3.5 h-3.5 ${i < rev.rating ? 'fill-current' : 'text-stone-200'}`} />
-                              ))}
-                            </div>
-                          </td>
-                          <td className="py-4 px-6 font-serif text-[#37411A] font-bold">{rev.reviewTitle || '-'}</td>
-                          <td className="py-4 px-6 max-w-sm">
-                            <div className="font-light text-stone-600 leading-relaxed font-sans">{rev.reviewText || rev.comment}</div>
-                            {rev.reviewImages && rev.reviewImages.length > 0 && (
-                              <div className="flex gap-1.5 mt-2">
-                                {rev.reviewImages.map((img, idx) => (
-                                  <img key={idx} src={img} alt="review" className="w-10 h-10 object-cover rounded-lg border border-stone-200" />
+              <>
+                {/* Desktop View */}
+                <div className="hidden lg:block bg-white border border-[#EDE7D9] rounded-[28px] overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-xs text-stone-500 font-sans">
+                      <thead className="bg-[#FDFBF7] border-b border-[#EDE7D9] text-[#B8833E]">
+                        <tr>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none font-bold">Customer Name</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-24 font-bold">Rating</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none font-bold">Review Title</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none font-bold">Review Text</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none font-bold">Submitted Date</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-24 font-bold">Status</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none text-right font-bold">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#EDE7D9]">
+                        {filteredReviews.map((rev) => (
+                          <tr key={rev.id} className="hover:bg-[#FDFBF7] transition">
+                            <td className="py-4 px-6 font-bold text-[#37411A]">{rev.customerName || 'Anonymous'}</td>
+                            <td className="py-4 px-6 font-sans">
+                              <div className="flex text-amber-500 font-sans">
+                                {[...Array(5)].map((_, i) => (
+                                  <FiStar key={i} className={`w-3.5 h-3.5 ${i < rev.rating ? 'fill-current' : 'text-stone-200'}`} />
                                 ))}
                               </div>
-                            )}
-                          </td>
-                          <td className="py-4 px-6 font-sans text-stone-400">{new Date(rev.createdAt).toLocaleDateString()}</td>
-                          <td className="py-4 px-6">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                              rev.status === 'APPROVED'
-                                ? 'bg-green-50 text-[#4E641A] border border-green-200'
-                                : rev.status === 'REJECTED'
-                                  ? 'bg-red-50 text-red-500 border border-red-200'
-                                  : 'bg-amber-50 text-amber-600 border border-amber-200'
-                            }`}>
-                              {rev.status}
-                            </span>
-                          </td>
-                          <td className="py-4 px-6 text-right">
-                            <div className="flex justify-end gap-1.5 select-none">
-                              {rev.status !== 'APPROVED' && (
+                            </td>
+                            <td className="py-4 px-6 font-serif text-[#37411A] font-bold">{rev.reviewTitle || '-'}</td>
+                            <td className="py-4 px-6 max-w-sm">
+                              <div className="font-light text-stone-600 leading-relaxed font-sans">{rev.reviewText || rev.comment}</div>
+                              {rev.reviewImages && rev.reviewImages.length > 0 && (
+                                <div className="flex gap-1.5 mt-2">
+                                  {rev.reviewImages.map((img, idx) => (
+                                    <img key={idx} src={img} alt="review" className="w-10 h-10 object-cover rounded-lg border border-stone-200" />
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-4 px-6 font-sans text-stone-400">{new Date(rev.createdAt).toLocaleDateString()}</td>
+                            <td className="py-4 px-6">
+                              <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                                rev.status === 'APPROVED'
+                                  ? 'bg-green-50 text-[#4E641A] border border-green-200'
+                                  : rev.status === 'REJECTED'
+                                    ? 'bg-red-50 text-red-500 border border-red-200'
+                                    : 'bg-amber-50 text-amber-600 border border-amber-200'
+                              }`}>
+                                {rev.status}
+                              </span>
+                            </td>
+                            <td className="py-4 px-6 text-right">
+                              <div className="flex justify-end gap-1.5 select-none">
+                                {rev.status !== 'APPROVED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveReview(rev.id)}
+                                    className="px-2 py-1 bg-green-50 text-[#4E641A] border border-green-200 hover:bg-[#4E641A] hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans"
+                                    title="Approve Review"
+                                  >
+                                    Approve
+                                  </button>
+                                )}
+                                {rev.status !== 'REJECTED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectReview(rev.id)}
+                                    className="px-2 py-1 bg-amber-50 text-amber-655 border border-amber-200 hover:bg-amber-600 hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans"
+                                    title="Reject Review"
+                                  >
+                                    Reject
+                                  </button>
+                                )}
+                                {rev.status === 'APPROVED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePromoteReview(rev)}
+                                    className="px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-600 hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans"
+                                    title="Promote to Testimonial"
+                                  >
+                                    Promote
+                                  </button>
+                                )}
                                 <button
                                   type="button"
-                                  onClick={() => handleApproveReview(rev.id)}
-                                  className="px-2 py-1 bg-green-50 text-[#4E641A] border border-green-200 hover:bg-[#4E641A] hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans"
-                                  title="Approve Review"
+                                  onClick={() => {
+                                    setReviewForm({
+                                      id: rev.id,
+                                      customerName: rev.customerName || '',
+                                      rating: rev.rating,
+                                      reviewTitle: rev.reviewTitle || '',
+                                      reviewText: rev.reviewText || rev.comment || '',
+                                      status: rev.status
+                                    });
+                                    setShowReviewModal(true);
+                                  }}
+                                  className="p-1.5 border border-[#EDE7D9] hover:border-[#4E641A]/30 text-stone-500 hover:text-[#4E641A] rounded-lg cursor-pointer bg-white"
+                                  title="Edit"
                                 >
-                                  Approve
+                                  <FiEdit2 size={12} />
                                 </button>
-                              )}
-                              {rev.status !== 'REJECTED' && (
                                 <button
                                   type="button"
-                                  onClick={() => handleRejectReview(rev.id)}
-                                  className="px-2 py-1 bg-amber-50 text-amber-655 border border-amber-200 hover:bg-amber-600 hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans"
-                                  title="Reject Review"
+                                  onClick={() => handleDeleteReview(rev.id)}
+                                  className="p-1.5 border border-red-200 hover:bg-red-50 text-red-500 rounded-lg cursor-pointer bg-white"
+                                  title="Delete"
                                 >
-                                  Reject
+                                  <FiTrash2 size={12} />
                                 </button>
-                              )}
-                              {rev.status === 'APPROVED' && (
-                                <button
-                                  type="button"
-                                  onClick={() => handlePromoteReview(rev)}
-                                  className="px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-600 hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans"
-                                  title="Promote to Testimonial"
-                                >
-                                  Promote
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setReviewForm({
-                                    id: rev.id,
-                                    customerName: rev.customerName || '',
-                                    rating: rev.rating,
-                                    reviewTitle: rev.reviewTitle || '',
-                                    reviewText: rev.reviewText || rev.comment || '',
-                                    status: rev.status
-                                  });
-                                  setShowReviewModal(true);
-                                }}
-                                className="p-1.5 border border-[#EDE7D9] hover:border-[#4E641A]/30 text-stone-500 hover:text-[#4E641A] rounded-lg cursor-pointer bg-white"
-                                title="Edit"
-                              >
-                                <FiEdit2 size={12} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteReview(rev.id)}
-                                className="p-1.5 border border-red-200 hover:bg-red-50 text-red-500 rounded-lg cursor-pointer bg-white"
-                                title="Delete"
-                              >
-                                <FiTrash2 size={12} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+
+                {/* Mobile Card List View */}
+                <div className="block lg:hidden space-y-4">
+                  {filteredReviews.map((rev) => (
+                    <div key={rev.id} className="bg-white border border-[#EDE7D9] rounded-2xl p-4.5 space-y-3 shadow-sm text-left flex flex-col">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="space-y-0.5">
+                          <h4 className="font-serif font-bold text-sm text-[#37411A]">{rev.customerName || 'Anonymous'}</h4>
+                          <span className="text-[10px] text-stone-400 block font-sans">
+                            {new Date(rev.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        </div>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                          rev.status === 'APPROVED'
+                            ? 'bg-green-50 text-[#4E641A] border border-green-200'
+                            : rev.status === 'REJECTED'
+                              ? 'bg-red-50 text-red-500 border border-red-200'
+                              : 'bg-amber-50 text-amber-600 border border-amber-200'
+                        }`}>
+                          {rev.status}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex text-amber-500">
+                          {[...Array(5)].map((_, i) => (
+                            <FiStar key={i} className={`w-3.5 h-3.5 ${i < rev.rating ? 'fill-current' : 'text-stone-200'}`} />
+                          ))}
+                        </div>
+                        {rev.reviewTitle && (
+                          <h5 className="font-serif text-xs font-bold text-[#37411A]">{rev.reviewTitle}</h5>
+                        )}
+                        <p className="font-light text-stone-600 leading-relaxed font-sans text-xs">{rev.reviewText || rev.comment}</p>
+                        {rev.reviewImages && rev.reviewImages.length > 0 && (
+                          <div className="flex gap-1.5 mt-2 flex-wrap">
+                            {rev.reviewImages.map((img, idx) => (
+                              <img key={idx} src={img} alt="review" className="w-12 h-12 object-cover rounded-lg border border-stone-200" />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-3.5 select-none">
+                        {/* Primary Moderation Actions */}
+                        <div className="flex gap-1.5 flex-wrap">
+                          {rev.status !== 'APPROVED' && (
+                            <button
+                              type="button"
+                              onClick={() => handleApproveReview(rev.id)}
+                              className="px-2.5 py-1.5 bg-green-50 text-[#4E641A] border border-green-200 hover:bg-[#4E641A] hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans"
+                            >
+                              Approve
+                            </button>
+                          )}
+                          {rev.status !== 'REJECTED' && (
+                            <button
+                              type="button"
+                              onClick={() => handleRejectReview(rev.id)}
+                              className="px-2.5 py-1.5 bg-amber-50 text-amber-655 border border-amber-200 hover:bg-amber-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans"
+                            >
+                              Reject
+                            </button>
+                          )}
+                          {rev.status === 'APPROVED' && (
+                            <button
+                              type="button"
+                              onClick={() => handlePromoteReview(rev)}
+                              className="px-2.5 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-600 hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans"
+                            >
+                              Promote
+                            </button>
+                          )}
+                        </div>
+                        
+                        {/* Edit & Delete Actions */}
+                        <div className="flex gap-2 ml-auto">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReviewForm({
+                                id: rev.id,
+                                customerName: rev.customerName || '',
+                                rating: rev.rating,
+                                reviewTitle: rev.reviewTitle || '',
+                                reviewText: rev.reviewText || rev.comment || '',
+                                status: rev.status
+                              });
+                              setShowReviewModal(true);
+                            }}
+                            className="p-2 border border-[#EDE7D9] hover:border-[#4E641A]/30 text-stone-500 hover:text-[#4E641A] rounded-lg cursor-pointer bg-white"
+                            title="Edit"
+                          >
+                            <FiEdit2 size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteReview(rev.id)}
+                            className="p-2 border border-red-200 hover:bg-red-50 text-red-500 rounded-lg cursor-pointer bg-white"
+                            title="Delete"
+                          >
+                            <FiTrash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}
@@ -6660,141 +8971,259 @@ export default function AdminDashboard() {
             {/* Testimonials List */}
             {testimonialsList.length === 0 ? (
               <EmptyState
-                title="💬 No Testimonials Yet"
+                title="No Testimonials Yet"
                 description="Create testimonials manually or promote approved reviews to testimonials to display them on the storefront."
                 illustration="💬"
                 actionLabel="Create Testimonial"
                 onAction={() => setShowTestimonialModal(true)}
               />
             ) : (
-              <div className="bg-white border border-[#EDE7D9] rounded-[28px] overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-xs text-stone-500 font-sans">
-                    <thead className="bg-[#FDFBF7] border-b border-[#EDE7D9] text-[#B8833E]">
-                      <tr>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Customer Name</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-24">Rating</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Testimonial Text</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Product</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-24">Status</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-28">Featured</th>
-                        <th className="py-4 px-6 font-bold uppercase tracking-wider select-none text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#EDE7D9]">
-                      {testimonialsList.map((test) => (
-                        <tr key={test.id} className="hover:bg-[#FDFBF7] transition">
-                          <td className="py-4 px-6">
-                            <div className="flex items-center space-x-2.5">
-                              <div className="w-8 h-8 rounded-full bg-[#4E641A]/10 border border-[#EDE7D9] flex items-center justify-center font-bold text-[#4E641A] font-serif overflow-hidden shrink-0">
-                                {test.customerPhoto && (test.customerPhoto.startsWith('http') || test.customerPhoto.includes('/')) ? (
-                                  <img src={test.customerPhoto} alt={test.customerName} className="w-full h-full object-cover" />
-                                ) : (
-                                  test.customerPhoto || (test.customerName ? test.customerName.charAt(0) : 'C')
-                                )}
-                              </div>
-                              <div className="flex flex-col">
-                                <span className="font-bold text-[#37411A] font-serif">{test.customerName}</span>
-                                {test.location && <span className="text-[10px] text-stone-400 font-medium">{test.location}</span>}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-4 px-6 font-sans">
-                            <div className="flex text-amber-500">
-                              {[...Array(5)].map((_, i) => (
-                                <FiStar key={i} className={`w-3.5 h-3.5 ${i < test.rating ? 'fill-current' : 'text-stone-200'}`} />
-                              ))}
-                            </div>
-                          </td>
-                          <td className="py-4 px-6 max-w-sm">
-                            <p className="font-light text-stone-600 leading-relaxed font-sans italic">
-                              "{test.testimonialText}"
-                            </p>
-                          </td>
-                          <td className="py-4 px-6 font-medium text-[#37411A] font-sans">
-                            {test.productPurchased || '-'}
-                          </td>
-                          <td className="py-4 px-6">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                              test.isActive
-                                ? 'bg-green-50 text-[#4E641A] border border-green-200'
-                                : 'bg-stone-50 text-stone-400 border border-stone-200'
-                            }`}>
-                              {test.isActive ? 'Active' : 'Draft'}
-                            </span>
-                          </td>
-                          <td className="py-4 px-6">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                              test.featuredToggle
-                                ? 'bg-amber-50 text-amber-600 border border-amber-200'
-                                : 'bg-stone-50 text-stone-400 border border-stone-200'
-                            }`}>
-                              {test.featuredToggle ? 'Featured' : 'Standard'}
-                            </span>
-                          </td>
-                          <td className="py-4 px-6 text-right text-xs">
-                            <div className="flex justify-end gap-1.5 select-none">
-                              <button
-                                type="button"
-                                onClick={() => handleToggleTestimonialActive(test)}
-                                className={`px-2.5 py-1 border rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans ${
-                                  test.isActive
-                                    ? 'bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100'
-                                    : 'bg-green-50 text-[#4E641A] border-green-200 hover:bg-[#4E641A] hover:text-white'
-                                }`}
-                                title={test.isActive ? 'Unpublish Testimonial' : 'Publish Testimonial'}
-                              >
-                                {test.isActive ? 'Unpublish' : 'Publish'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleToggleTestimonialFeatured(test)}
-                                className={`px-2.5 py-1 border rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans ${
-                                  test.featuredToggle
-                                    ? 'bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100'
-                                    : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-600 hover:text-white'
-                                }`}
-                                title={test.featuredToggle ? 'Unfeature Testimonial' : 'Feature Testimonial'}
-                              >
-                                {test.featuredToggle ? 'Unfeature' : 'Feature'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setTestimonialForm({
-                                    id: test.id,
-                                    customerName: test.customerName,
-                                    location: test.location || '',
-                                    testimonialText: test.testimonialText,
-                                    rating: test.rating,
-                                    customerPhoto: test.customerPhoto || '',
-                                    productPurchased: test.productPurchased || '',
-                                    featuredToggle: test.featuredToggle,
-                                    isActive: test.isActive
-                                  });
-                                  setShowTestimonialModal(true);
-                                }}
-                                className="p-1.5 border border-[#EDE7D9] hover:border-[#4E641A]/30 text-stone-500 hover:text-[#4E641A] rounded-lg cursor-pointer bg-white"
-                                title="Edit"
-                              >
-                                <FiEdit2 size={12} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteTestimonial(test.id)}
-                                className="p-1.5 border border-red-200 hover:bg-red-50 text-red-500 rounded-lg cursor-pointer bg-white"
-                                title="Delete"
-                              >
-                                <FiTrash2 size={12} />
-                              </button>
-                            </div>
-                          </td>
+              <>
+                {/* Desktop View */}
+                <div className="hidden lg:block bg-white border border-[#EDE7D9] rounded-[28px] overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-xs text-stone-500 font-sans">
+                      <thead className="bg-[#FDFBF7] border-b border-[#EDE7D9] text-[#B8833E]">
+                        <tr>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Customer Name</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-24">Rating</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Testimonial Text</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none">Product</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-24">Status</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none w-28">Featured</th>
+                          <th className="py-4 px-6 font-bold uppercase tracking-wider select-none text-right">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-[#EDE7D9]">
+                        {testimonialsList.map((test) => (
+                          <tr key={test.id} className="hover:bg-[#FDFBF7] transition">
+                            <td className="py-4 px-6">
+                              <div className="flex items-center space-x-2.5">
+                                <div className="w-8 h-8 rounded-full bg-[#4E641A]/10 border border-[#EDE7D9] flex items-center justify-center font-bold text-[#4E641A] font-serif overflow-hidden shrink-0">
+                                  {test.customerPhoto && (test.customerPhoto.startsWith('http') || test.customerPhoto.includes('/')) ? (
+                                    <img src={test.customerPhoto} alt={test.customerName} className="w-full h-full object-cover" />
+                                  ) : (
+                                    test.customerPhoto || (test.customerName ? test.customerName.charAt(0) : 'C')
+                                  )}
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-[#37411A] font-serif">{test.customerName}</span>
+                                  {test.location && <span className="text-[10px] text-stone-400 font-medium">{test.location}</span>}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 font-sans">
+                              <div className="flex text-amber-500">
+                                {[...Array(5)].map((_, i) => (
+                                  <FiStar key={i} className={`w-3.5 h-3.5 ${i < test.rating ? 'fill-current' : 'text-stone-200'}`} />
+                                ))}
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 max-w-sm">
+                              <p className="font-light text-stone-600 leading-relaxed font-sans italic">
+                                "{test.testimonialText}"
+                              </p>
+                            </td>
+                            <td className="py-4 px-6 font-medium text-[#37411A] font-sans">
+                              {test.productPurchased || '-'}
+                            </td>
+                            <td className="py-4 px-6">
+                              <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                                test.isActive
+                                  ? 'bg-green-50 text-[#4E641A] border border-green-200'
+                                  : 'bg-stone-50 text-stone-400 border border-stone-200'
+                              }`}>
+                                {test.isActive ? 'Active' : 'Draft'}
+                              </span>
+                            </td>
+                            <td className="py-4 px-6">
+                              <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                                test.featuredToggle
+                                  ? 'bg-amber-50 text-amber-600 border border-amber-200'
+                                  : 'bg-stone-50 text-stone-400 border border-stone-200'
+                              }`}>
+                                {test.featuredToggle ? 'Featured' : 'Standard'}
+                              </span>
+                            </td>
+                            <td className="py-4 px-6 text-right text-xs">
+                              <div className="flex justify-end gap-1.5 select-none">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleTestimonialActive(test)}
+                                  className={`px-2.5 py-1 border rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans ${
+                                    test.isActive
+                                      ? 'bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100'
+                                      : 'bg-green-50 text-[#4E641A] border-green-200 hover:bg-[#4E641A] hover:text-white'
+                                  }`}
+                                  title={test.isActive ? 'Unpublish Testimonial' : 'Publish Testimonial'}
+                                >
+                                  {test.isActive ? 'Unpublish' : 'Publish'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleTestimonialFeatured(test)}
+                                  className={`px-2.5 py-1 border rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans ${
+                                    test.featuredToggle
+                                      ? 'bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100'
+                                      : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-600 hover:text-white'
+                                  }`}
+                                  title={test.featuredToggle ? 'Unfeature Testimonial' : 'Feature Testimonial'}
+                                >
+                                  {test.featuredToggle ? 'Unfeature' : 'Feature'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTestimonialForm({
+                                      id: test.id,
+                                      customerName: test.customerName,
+                                      location: test.location || '',
+                                      testimonialText: test.testimonialText,
+                                      rating: test.rating,
+                                      customerPhoto: test.customerPhoto || '',
+                                      productPurchased: test.productPurchased || '',
+                                      featuredToggle: test.featuredToggle,
+                                      isActive: test.isActive
+                                    });
+                                    setShowTestimonialModal(true);
+                                  }}
+                                  className="p-1.5 border border-[#EDE7D9] hover:border-[#4E641A]/30 text-stone-500 hover:text-[#4E641A] rounded-lg cursor-pointer bg-white"
+                                  title="Edit"
+                                >
+                                  <FiEdit2 size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTestimonial(test.id)}
+                                  className="p-1.5 border border-red-200 hover:bg-red-50 text-red-500 rounded-lg cursor-pointer bg-white"
+                                  title="Delete"
+                                >
+                                  <FiTrash2 size={12} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+
+                {/* Mobile Card List View */}
+                <div className="block lg:hidden space-y-4">
+                  {testimonialsList.map((test) => (
+                    <div key={test.id} className="bg-white border border-[#EDE7D9] rounded-2xl p-4.5 space-y-3 shadow-sm text-left flex flex-col">
+                      <div className="flex items-center space-x-2.5">
+                        <div className="w-10 h-10 rounded-full bg-[#4E641A]/10 border border-[#EDE7D9] flex items-center justify-center font-bold text-[#4E641A] font-serif overflow-hidden shrink-0">
+                          {test.customerPhoto && (test.customerPhoto.startsWith('http') || test.customerPhoto.includes('/')) ? (
+                            <img src={test.customerPhoto} alt={test.customerName} className="w-full h-full object-cover" />
+                          ) : (
+                            test.customerPhoto || (test.customerName ? test.customerName.charAt(0) : 'C')
+                          )}
+                        </div>
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="font-bold text-sm text-[#37411A] font-serif truncate">{test.customerName}</span>
+                          {test.location && <span className="text-[10px] text-stone-400 font-medium truncate">{test.location}</span>}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex text-amber-500">
+                          {[...Array(5)].map((_, i) => (
+                            <FiStar key={i} className={`w-3 h-3 ${i < test.rating ? 'fill-current' : 'text-stone-200'}`} />
+                          ))}
+                        </div>
+                        {test.productPurchased && (
+                          <span className="text-[9px] bg-stone-50 border border-stone-200/60 text-stone-500 px-2 py-0.5 rounded-full font-sans font-medium">
+                            {test.productPurchased}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="font-light text-stone-600 leading-relaxed font-sans text-xs italic">
+                        "{test.testimonialText}"
+                      </p>
+
+                      <div className="flex gap-2 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                          test.isActive
+                            ? 'bg-green-50 text-[#4E641A] border border-green-200'
+                            : 'bg-stone-50 text-stone-400 border border-stone-200'
+                        }`}>
+                          {test.isActive ? 'Active' : 'Draft'}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                          test.featuredToggle
+                            ? 'bg-amber-50 text-amber-600 border border-amber-200'
+                            : 'bg-stone-50 text-stone-400 border border-[#EDE7D9]'
+                        }`}>
+                          {test.featuredToggle ? 'Featured' : 'Standard'}
+                        </span>
+                      </div>
+
+                      <div className="pt-3 border-t border-stone-100 flex flex-col gap-2 select-none">
+                        <div className="flex justify-between items-center w-full gap-2">
+                          <div className="flex gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleTestimonialActive(test)}
+                              className={`px-2.5 py-1.5 border rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans ${
+                                test.isActive
+                                  ? 'bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100'
+                                  : 'bg-green-50 text-[#4E641A] border-green-200 hover:bg-[#4E641A] hover:text-white'
+                              }`}
+                            >
+                              {test.isActive ? 'Unpublish' : 'Publish'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleTestimonialFeatured(test)}
+                              className={`px-2.5 py-1.5 border rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer transition shadow-sm font-sans ${
+                                test.featuredToggle
+                                  ? 'bg-stone-50 text-stone-500 border-stone-200 hover:bg-stone-100'
+                                  : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-600 hover:text-white'
+                              }`}
+                            >
+                              {test.featuredToggle ? 'Unfeature' : 'Feature'}
+                            </button>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTestimonialForm({
+                                  id: test.id,
+                                  customerName: test.customerName,
+                                  location: test.location || '',
+                                  testimonialText: test.testimonialText,
+                                  rating: test.rating,
+                                  customerPhoto: test.customerPhoto || '',
+                                  productPurchased: test.productPurchased || '',
+                                  featuredToggle: test.featuredToggle,
+                                  isActive: test.isActive
+                                });
+                                setShowTestimonialModal(true);
+                              }}
+                              className="p-2 border border-[#EDE7D9] hover:border-[#4E641A]/30 text-stone-500 hover:text-[#4E641A] rounded-lg cursor-pointer bg-white"
+                              title="Edit"
+                            >
+                              <FiEdit2 size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTestimonial(test.id)}
+                              className="p-2 border border-red-200 hover:bg-red-50 text-red-500 rounded-lg cursor-pointer bg-white"
+                              title="Delete"
+                            >
+                              <FiTrash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}
@@ -7323,7 +9752,7 @@ export default function AdminDashboard() {
                             </button>
                           </div>
                         ) : (
-                          homepageHeroes.map((hr) => (
+                          [...homepageHeroes].sort((a, b) => (a.slideOrder || 0) - (b.slideOrder || 0)).map((hr) => (
                             <div key={hr.id} className="bg-white border border-[#EDE7D9] rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm hover:border-[#B8833E]/20 transition text-left w-full">
                               <div className="flex gap-4 items-start min-w-0">
                                 <img
@@ -7448,10 +9877,10 @@ export default function AdminDashboard() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => loadCollectionTemplate('pickles')}
-                              className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded text-[9px] font-bold uppercase cursor-pointer"
+                              onClick={() => loadCollectionTemplate('spices')}
+                              className="px-2.5 py-1 bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 rounded text-[9px] font-bold uppercase cursor-pointer"
                             >
-                              🥒 Pickles Collection
+                              🌶️ Spices Collection
                             </button>
                           </div>
                         </div>
@@ -7576,12 +10005,10 @@ export default function AdminDashboard() {
                               onChange={(e) => setCollectionForm({ ...collectionForm, categorySlug: e.target.value })}
                               className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-3 px-4 focus:outline-none focus:border-[#4E641A] text-[#37411A] h-[42px]"
                             >
-                              <option value="ghee">Ghee</option>
-                              <option value="pickles">Pickles</option>
-                              <option value="spices">Spices</option>
-                              <option value="pulses">Pulses</option>
-                              <option value="rice-grains">Rice & Grains</option>
-                              <option value="all">Shop All</option>
+                              <option value="all">Shop All (all)</option>
+                              {categories.map((cat) => (
+                                <option key={cat.id} value={cat.slug}>{cat.name} ({cat.slug})</option>
+                              ))}
                             </select>
                           </div>
 
@@ -7621,13 +10048,27 @@ export default function AdminDashboard() {
                         <div className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-2xl p-4 text-[10px] text-stone-500 font-semibold flex items-center justify-between">
                           <span>💡 Drag & Drop cards vertically to change order, or click the arrows.</span>
                         </div>
-                        {homepageCollections.length === 0 ? (
-                          <div className="text-center py-12 bg-white border border-[#EDE7D9] rounded-[28px] text-stone-400">
-                            <span className="text-2xl">📦</span>
-                            <p className="text-xs mt-2 font-bold uppercase tracking-wider">No signature collections created yet.</p>
-                          </div>
-                        ) : (
-                          homepageCollections.map((coll, index) => (
+                        {(() => {
+                          const sigCollectionsOnly = homepageCollections.filter(c => {
+                            if (c.description && c.description.startsWith('{')) {
+                              try {
+                                const parsed = JSON.parse(c.description);
+                                return !parsed.isPromoCategory;
+                              } catch(e) {}
+                            }
+                            return true;
+                          });
+
+                          if (sigCollectionsOnly.length === 0) {
+                            return (
+                              <div className="text-center py-12 bg-white border border-[#EDE7D9] rounded-[28px] text-stone-400">
+                                <span className="text-2xl">📦</span>
+                                <p className="text-xs mt-2 font-bold uppercase tracking-wider">No signature collections created yet.</p>
+                              </div>
+                            );
+                          }
+
+                          return sigCollectionsOnly.map((coll, index) => (
                             <div
                               key={coll.id}
                               draggable
@@ -7637,14 +10078,40 @@ export default function AdminDashboard() {
                                 e.preventDefault();
                                 const dragIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
                                 if (dragIdx === index) return;
+                                
+                                const sigIndices = [];
+                                const sigItems = [];
+                                homepageCollections.forEach((item, idx) => {
+                                  let isPromo = false;
+                                  if (item.description && item.description.startsWith('{')) {
+                                    try {
+                                      const parsed = JSON.parse(item.description);
+                                      isPromo = !!parsed.isPromoCategory;
+                                    } catch(e) {}
+                                  }
+                                  if (!isPromo) {
+                                    sigIndices.push(idx);
+                                    sigItems.push(item);
+                                  }
+                                });
+
+                                const [draggedItem] = sigItems.splice(dragIdx, 1);
+                                sigItems.splice(index, 0, draggedItem);
+
                                 const updated = [...homepageCollections];
-                                const draggedItem = updated[dragIdx];
-                                updated.splice(dragIdx, 1);
-                                updated.splice(index, 0, draggedItem);
+                                sigItems.forEach((item, idx) => {
+                                  const origIdx = sigIndices[idx];
+                                  updated[origIdx] = {
+                                    ...item,
+                                    sortOrder: idx
+                                  };
+                                });
+
                                 setHomepageCollections(updated);
                                 try {
                                   const payload = updated.map((item, idx) => ({ id: item.id, sortOrder: idx }));
                                   await api.put('/admin/homepage/collections/reorder', { order: payload });
+                                  fetchHomepageCMSData();
                                 } catch (err) {
                                   modal.alert('Reorder Failed', err.message, 'error');
                                 }
@@ -7692,8 +10159,8 @@ export default function AdminDashboard() {
                                   </button>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleMoveCollection(index, 'down'); }}
-                                    disabled={index === homepageCollections.length - 1}
-                                    className={`p-1.5 rounded border border-[#EDE7D9] bg-transparent cursor-pointer ${index === homepageCollections.length - 1 ? 'text-stone-200 cursor-not-allowed border-stone-100' : 'text-stone-500 hover:bg-stone-50'}`}
+                                    disabled={index === sigCollectionsOnly.length - 1}
+                                    className={`p-1.5 rounded border border-[#EDE7D9] bg-transparent cursor-pointer ${index === sigCollectionsOnly.length - 1 ? 'text-stone-200 cursor-not-allowed border-stone-100' : 'text-stone-500 hover:bg-stone-50'}`}
                                   >
                                     ▼
                                   </button>
@@ -7738,8 +10205,8 @@ export default function AdminDashboard() {
                                 </button>
                               </div>
                             </div>
-                          ))
-                        )}
+                          ));
+                        })()}
                       </div>
                     )}
                   </div>
@@ -7846,17 +10313,9 @@ export default function AdminDashboard() {
                                 required
                               >
                                 <option value="">-- Associate Core Category --</option>
-                                <option value="ghee">ghee (A2 Ghee)</option>
-                                <option value="cold-pressed-oils">cold-pressed-oils (Pressed Oils)</option>
-                                <option value="pickles">pickles (Pickles)</option>
-                                <option value="spices">spices (Spices)</option>
-                                <option value="pulses">pulses (Pulses)</option>
-                                <option value="rice-grains">rice-grains (Rice & Grains)</option>
-                                <option value="all">all (All Staples)</option>
-                                {categories.filter(c => 
-                                  !['ghee','cold-pressed-oils','pickles','spices','pulses','rice-grains'].includes(c.slug)
-                                ).map(c => (
-                                  <option key={c.id} value={c.slug}>{c.slug} ({c.name})</option>
+                                <option value="all">All Staples (all)</option>
+                                {categories.map((c) => (
+                                  <option key={c.id} value={c.slug}>{c.name} ({c.slug})</option>
                                 ))}
                               </select>
                               {hpCatFormErrors.categorySlug && <span className="text-[9px] text-red-650 font-bold">⚠️ {hpCatFormErrors.categorySlug}</span>}
@@ -8210,13 +10669,13 @@ export default function AdminDashboard() {
                   <div className="bg-white border border-[#EDE7D9] rounded-[28px] p-6 shadow-sm space-y-4 text-left">
                     <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#B8833E]">HOMEPAGE SECTIONS LAYOUT</span>
                     <p className="text-stone-500 text-[10px] leading-relaxed">
-                      Reorder the sequence in which content sections are loaded on the main storefront homepage. Click the Up and Down arrows to modify sequences. Updates are saved automatically.
+                      Configure visibility, reorder placement sequences, and edit dynamic section headers for the storefront. Section ordering changes are saved automatically.
                     </p>
 
-                    <div className="space-y-2.5 pt-2">
+                    <div className="space-y-3 pt-2">
                       {sectionOrder.split(',').map((sectName, index, arr) => {
                         const displayNameMap = {
-                          'categories': '🌿 Category Quick Access Bar',
+                          'categories': '🌿 Category Quick Access Bar / Promo Categories',
                           'hero': '✨ Campaign Hero Banner',
                           'best-sellers': '🛍️ Best Sellers Catalog Grid',
                           'trust': '🛡️ Brand Purity Trust Indicators',
@@ -8225,32 +10684,116 @@ export default function AdminDashboard() {
                           'reviews': '💬 Customer Testimonials Feed',
                           'footer-banner': '🏞️ Join Journey Footer Banner'
                         };
+
+                        const isVisible = settings[`homepage_section_visible_${sectName}`] !== 'false';
+                        const isExpanded = expandedSection === sectName;
+
                         return (
-                          <div
-                            key={sectName}
-                            className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-xl py-3.5 px-4 flex items-center justify-between text-xs font-semibold text-stone-700"
-                          >
-                            <span>{displayNameMap[sectName] || sectName}</span>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleMoveSection(index, 'up')}
-                                disabled={index === 0}
-                                className={`p-1.5 rounded transition bg-transparent border border-[#EDE7D9] cursor-pointer ${
-                                  index === 0 ? 'text-stone-300 border-stone-100 cursor-not-allowed' : 'text-[#4E641A] hover:bg-[#4E641A]/5'
-                                }`}
-                              >
-                                <FiArrowUp size={12} />
-                              </button>
-                              <button
-                                onClick={() => handleMoveSection(index, 'down')}
-                                disabled={index === arr.length - 1}
-                                className={`p-1.5 rounded transition bg-transparent border border-[#EDE7D9] cursor-pointer ${
-                                  index === arr.length - 1 ? 'text-stone-300 border-stone-100 cursor-not-allowed' : 'text-[#4E641A] hover:bg-[#4E641A]/5'
-                                }`}
-                              >
-                                <FiArrowDown size={12} />
-                              </button>
+                          <div key={sectName} className="border border-[#EDE7D9] rounded-2xl overflow-hidden bg-white shadow-sm hover:border-[#B8833E]/10 transition">
+                            {/* Row Header */}
+                            <div className="bg-[#FDFBF7] py-3.5 px-4 flex items-center justify-between text-xs font-semibold text-stone-700">
+                              <div className="flex items-center space-x-3 min-w-0">
+                                {/* Visibility Toggle */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleSectionVisibility(sectName, isVisible)}
+                                  className={`px-2.5 py-1 rounded-md text-[8px] font-extrabold uppercase tracking-wider transition shrink-0 border cursor-pointer ${
+                                    isVisible 
+                                      ? 'bg-green-50 text-green-700 border-green-200' 
+                                      : 'bg-stone-50 text-stone-450 border-stone-200'
+                                  }`}
+                                >
+                                  {isVisible ? 'Visible' : 'Hidden'}
+                                </button>
+                                <span className="truncate">{displayNameMap[sectName] || sectName}</span>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                {/* Edit Overrides Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleExpandSection(sectName)}
+                                  className="px-2.5 py-1 border border-stone-200 hover:bg-stone-50 text-stone-600 rounded text-[9px] font-bold uppercase transition cursor-pointer"
+                                >
+                                  {isExpanded ? 'Collapse' : 'Edit Copy'}
+                                </button>
+
+                                {/* Move Up/Down Buttons */}
+                                <button
+                                  onClick={() => handleMoveSection(index, 'up')}
+                                  disabled={index === 0}
+                                  className={`p-1.5 rounded transition bg-transparent border border-[#EDE7D9] cursor-pointer ${
+                                    index === 0 ? 'text-stone-300 border-stone-100 cursor-not-allowed' : 'text-[#4E641A] hover:bg-[#4E641A]/5'
+                                  }`}
+                                >
+                                  <FiArrowUp size={11} />
+                                </button>
+                                <button
+                                  onClick={() => handleMoveSection(index, 'down')}
+                                  disabled={index === arr.length - 1}
+                                  className={`p-1.5 rounded transition bg-transparent border border-[#EDE7D9] cursor-pointer ${
+                                    index === arr.length - 1 ? 'text-stone-300 border-stone-100 cursor-not-allowed' : 'text-[#4E641A] hover:bg-[#4E641A]/5'
+                                  }`}
+                                >
+                                  <FiArrowDown size={11} />
+                                </button>
+                              </div>
                             </div>
+
+                            {/* Expanded Edit Form */}
+                            {isExpanded && (
+                              <div className="p-4 border-t border-stone-100 bg-white grid grid-cols-1 gap-3 text-stone-600 text-[11px] border-none">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                  <div className="flex flex-col gap-1">
+                                    <label className="text-[8px] font-extrabold uppercase tracking-wider text-stone-400">Section Badge</label>
+                                    <input
+                                      type="text"
+                                      value={sectionBadgeInput}
+                                      onChange={(e) => setSectionBadgeInput(e.target.value)}
+                                      placeholder="e.g. Customer Favorites"
+                                      className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-lg py-2 px-3 focus:outline-none focus:border-[#4E641A]"
+                                    />
+                                  </div>
+                                  <div className="flex flex-col gap-1 sm:col-span-2">
+                                    <label className="text-[8px] font-extrabold uppercase tracking-wider text-stone-400">Section Title</label>
+                                    <input
+                                      type="text"
+                                      value={sectionTitleInput}
+                                      onChange={(e) => setSectionTitleInput(e.target.value)}
+                                      placeholder="e.g. Direct From Soil Best Sellers"
+                                      className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-lg py-2 px-3 focus:outline-none focus:border-[#4E641A]"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col gap-1">
+                                  <label className="text-[8px] font-extrabold uppercase tracking-wider text-stone-400">Section Subtitle / Description</label>
+                                  <textarea
+                                    value={sectionSubtitleInput}
+                                    onChange={(e) => setSectionSubtitleInput(e.target.value)}
+                                    placeholder="Enter section description paragraph..."
+                                    className="bg-[#FDFBF7] border border-[#EDE7D9] rounded-lg py-2 px-3 focus:outline-none focus:border-[#4E641A] h-14 resize-none font-sans"
+                                  />
+                                </div>
+
+                                <div className="flex justify-end gap-2 pt-2 border-t border-stone-50">
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedSection(null)}
+                                    className="px-3 py-1.5 rounded-lg border border-stone-200 text-stone-400 hover:bg-stone-50 font-bold uppercase text-[9px] cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveSectionTexts(sectName)}
+                                    className="px-4 py-1.5 bg-[#4E641A] hover:bg-[#37411A] text-white rounded-lg font-bold uppercase text-[9px] cursor-pointer border-none"
+                                  >
+                                    Save Changes
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -8273,115 +10816,122 @@ export default function AdminDashboard() {
                 {/* Simulated Container */}
                 <div className="border border-[#EDE7D9] rounded-2xl overflow-hidden shadow-inner bg-[#F9F6F0] relative min-h-[360px] flex flex-col justify-between p-5 text-left font-sans select-none scale-95 origin-top">
                   
-                  {selectedSubTab === 'hero' && (
-                    <>
-                      {/* Floating Trust Badge */}
-                      {heroForm.trustBadgeText && (
-                        <div className="self-start inline-flex items-center space-x-1.5 bg-white border border-[#EAE4D8] px-2.5 py-1 rounded-full shadow-sm text-[8px] font-bold text-stone-600">
-                          <div className="flex text-amber-500">
-                            {[...Array(5)].map((_, i) => <FiStar key={i} className="w-2.5 h-2.5 fill-current" />)}
+                  {selectedSubTab === 'hero' && (() => {
+                    const activePreviewHero = isEditingHero 
+                      ? heroForm 
+                      : ([...homepageHeroes].filter(h => h.isActive).sort((a, b) => (a.slideOrder || 0) - (b.slideOrder || 0))[0] || [...homepageHeroes].sort((a, b) => (a.slideOrder || 0) - (b.slideOrder || 0))[0] || heroForm);
+                    
+                    return (
+                      <>
+                        {/* Floating Trust Badge */}
+                        {activePreviewHero.trustBadgeText?.trim() && (
+                          <div className="self-start inline-flex items-center space-x-1.5 bg-white border border-[#EAE4D8] px-2.5 py-1 rounded-full shadow-sm text-[8px] font-bold text-stone-600">
+                            <div className="flex text-amber-500">
+                              {[...Array(5)].map((_, i) => <FiStar key={i} className="w-2.5 h-2.5 fill-current" />)}
+                            </div>
+                            <span>{activePreviewHero.trustBadgeText.trim()}</span>
                           </div>
-                          <span>{heroForm.trustBadgeText}</span>
+                        )}
+
+                        {/* Content block */}
+                        <div className="my-4 space-y-2">
+                          <h2 className="font-serif text-lg font-bold text-[#2F3B0C] leading-tight">
+                            {activePreviewHero.headingLine1 || 'Pristine Vedic Staples'}
+                            {activePreviewHero.headingHighlight && <span className="text-[#C68A2B] italic font-normal block">{activePreviewHero.headingHighlight}</span>}
+                            {activePreviewHero.headingLine2 && <span className="block mt-0.5">{activePreviewHero.headingLine2}</span>}
+                          </h2>
+                          {activePreviewHero.description && (
+                            <p className="text-[9px] text-stone-500 leading-relaxed line-clamp-3">
+                              {activePreviewHero.description}
+                            </p>
+                          )}
                         </div>
-                      )}
 
-                      {/* Content block */}
-                      <div className="my-4 space-y-2">
-                        <h2 className="font-serif text-lg font-bold text-[#2F3B0C] leading-tight">
-                          {heroForm.headingLine1 || 'Pristine Vedic Staples'}
-                          {heroForm.headingHighlight && <span className="text-[#C68A2B] italic font-normal block">{heroForm.headingHighlight}</span>}
-                          {heroForm.headingLine2 && <span className="block mt-0.5">{heroForm.headingLine2}</span>}
-                        </h2>
-                        {heroForm.description && (
-                          <p className="text-[9px] text-stone-500 leading-relaxed line-clamp-3">
-                            {heroForm.description}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Bullets grid */}
-                      <div className="grid grid-cols-2 gap-1.5 text-[8px] font-semibold text-[#2F3B0C]/80 mb-3">
-                        {heroForm.bulletOne && <div className="flex items-center space-x-1"><FiCheckCircle className="text-[#4E641A]" size={10} /><span>{heroForm.bulletOne}</span></div>}
-                        {heroForm.bulletTwo && <div className="flex items-center space-x-1"><FiCheckCircle className="text-[#4E641A]" size={10} /><span>{heroForm.bulletTwo}</span></div>}
-                        {heroForm.bulletThree && <div className="flex items-center space-x-1"><FiCheckCircle className="text-[#4E641A]" size={10} /><span>{heroForm.bulletThree}</span></div>}
-                        {heroForm.bulletFour && <div className="flex items-center space-x-1"><FiCheckCircle className="text-[#4E641A]" size={10} /><span>{heroForm.bulletFour}</span></div>}
-                      </div>
-
-                      {/* CTA Buttons */}
-                      <div className="flex gap-2 mb-3">
-                        {heroForm.primaryButtonText && (
-                          <button className="px-3 py-1.5 bg-[#4E641A] text-white text-[8px] font-bold uppercase tracking-wider rounded-lg border-none">
-                            {heroForm.primaryButtonText}
-                          </button>
-                        )}
-                        {heroForm.secondaryButtonText && (
-                          <button className="px-3 py-1.5 bg-white text-[#4E641A] border border-[#EAE4D8] text-[8px] font-bold uppercase tracking-wider rounded-lg">
-                            {heroForm.secondaryButtonText}
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Promo Code Text */}
-                      {heroForm.promoText && (
-                        <div className="flex items-center space-x-1 text-[7px] font-bold uppercase text-[#C68A2B] bg-[#C68A2B]/5 p-1 rounded">
-                          <span className="bg-[#C68A2B]/10 px-1 py-0.5 rounded text-[6px]">PROMO</span>
-                          <span className="truncate">{heroForm.promoText}</span>
+                        {/* Bullets grid */}
+                        <div className="grid grid-cols-2 gap-1.5 text-[8px] font-semibold text-[#2F3B0C]/80 mb-3">
+                          {activePreviewHero.bulletOne?.trim() && <div className="flex items-center space-x-1"><span className="text-[#4E641A] font-bold">✓</span><span>{activePreviewHero.bulletOne.trim()}</span></div>}
+                          {activePreviewHero.bulletTwo?.trim() && <div className="flex items-center space-x-1"><span className="text-[#4E641A] font-bold">✓</span><span>{activePreviewHero.bulletTwo.trim()}</span></div>}
+                          {activePreviewHero.bulletThree?.trim() && <div className="flex items-center space-x-1"><span className="text-[#4E641A] font-bold">✓</span><span>{activePreviewHero.bulletThree.trim()}</span></div>}
+                          {activePreviewHero.bulletFour?.trim() && <div className="flex items-center space-x-1"><span className="text-[#4E641A] font-bold">✓</span><span>{activePreviewHero.bulletFour.trim()}</span></div>}
                         </div>
-                      )}
 
-                      {/* Right Product Card Simulation */}
-                      <div className="border-t border-[#EDE7D9] pt-3 mt-3 flex items-center justify-between gap-3 text-left">
-                        {(() => {
-                          const featuredProd = products.find(p => p.id === heroForm.featuredProductId);
-                          const titleVal = featuredProd ? featuredProd.name : 'A2 Gir Cow Desi Ghee (Bilona Method)';
-                          const priceVal = featuredProd ? featuredProd.price : 950;
-                          const compPriceVal = featuredProd ? (featuredProd.compareAtPrice || Math.round(featuredProd.price * 1.15)) : 1100;
-                          const rawImageSrc = heroForm.heroImage || (featuredProd ? (featuredProd.images?.length > 0 ? featuredProd.images[0].url : featuredProd.image) : 'https://images.unsplash.com/photo-1588166524941-3bf61a9c41db?auto=format&fit=crop&q=80&w=800');
-                          const imageSrc = getCloudinaryCroppedUrl(rawImageSrc, heroForm);
-                          const hasStock = featuredProd ? (featuredProd.inventory > 0) : true;
+                        {/* CTA Buttons */}
+                        <div className="flex gap-2 mb-3">
+                          {activePreviewHero.primaryButtonText && (
+                            <button className="px-3 py-1.5 bg-[#4E641A] text-white text-[8px] font-bold uppercase tracking-wider rounded-lg border-none">
+                              {activePreviewHero.primaryButtonText}
+                            </button>
+                          )}
+                          {activePreviewHero.secondaryButtonText && (
+                            <button className="px-3 py-1.5 bg-white text-[#4E641A] border border-[#EAE4D8] text-[8px] font-bold uppercase tracking-wider rounded-lg">
+                              {activePreviewHero.secondaryButtonText}
+                            </button>
+                          )}
+                        </div>
 
-                          return (
-                            <>
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <img src={imageSrc} className="w-9 h-9 rounded object-cover border border-[#EDE7D9] shrink-0" />
-                                <div className="min-w-0">
-                                  <span className="block text-[7px] font-bold text-stone-400 uppercase tracking-widest">Storefront visual card</span>
-                                  <span className="block text-[9px] font-bold text-[#2F3B0C] truncate leading-tight">{titleVal}</span>
-                                  {featuredProd && (
-                                    <span className={`block text-[6px] font-extrabold uppercase mt-0.5 ${hasStock ? 'text-green-600' : 'text-red-500'}`}>
-                                      {hasStock ? `In Stock (${featuredProd.inventory})` : 'Sold Out'}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <div className="text-right">
-                                  <span className="block text-[9px] font-bold text-[#4E641A]">₹{priceVal}</span>
-                                  <span className="block text-[7px] line-through text-stone-455">₹{compPriceVal}</span>
-                                </div>
-                                {heroForm.offerBadgeText && (
-                                  <span className="bg-[#C68A2B] text-white text-[7px] font-extrabold uppercase py-0.5 px-1.5 rounded-full shadow-sm leading-none shrink-0">
-                                    {heroForm.offerBadgeText}
-                                  </span>
-                                )}
-                              </div>
-                            </>
-                          );
-                        })()}
-                      </div>
-
-                      {/* Simulated Floating Badge */}
-                      {(heroForm.floatingBadgeTitle || heroForm.floatingBadgeSubtitle) && (
-                        <div className="absolute top-4 right-4 bg-white/95 border border-[#EAE4D8] rounded-lg p-1.5 shadow-sm flex items-center space-x-1.5 z-20">
-                          <span className="text-xs">🌾</span>
-                          <div className="text-left leading-none font-sans">
-                            <span className="block text-[7px] font-bold text-[#2F3B0C]">{heroForm.floatingBadgeTitle}</span>
-                            <span className="block text-[6px] text-stone-450 uppercase tracking-wider font-semibold mt-0.5">{heroForm.floatingBadgeSubtitle}</span>
+                        {/* Promo Code Text */}
+                        {activePreviewHero.promoText && (
+                          <div className="flex items-center space-x-1 text-[7px] font-bold uppercase text-[#C68A2B] bg-[#C68A2B]/5 p-1 rounded">
+                            <span className="bg-[#C68A2B]/10 px-1 py-0.5 rounded text-[6px]">PROMO</span>
+                            <span className="truncate">{activePreviewHero.promoText}</span>
                           </div>
-                        </div>
-                      )}
-                    </>
-                  )}
+                        )}
+
+                        {/* Right Product Card Simulation */}
+                        {activePreviewHero.featuredProductId ? (
+                          <div className="border-t border-[#EDE7D9] pt-3 mt-3 flex items-center justify-between gap-3 text-left">
+                            {(() => {
+                              const featuredProd = products.find(p => p.id === activePreviewHero.featuredProductId);
+                              if (!featuredProd) return null;
+                              const titleVal = featuredProd.name;
+                              const priceVal = featuredProd.price;
+                              const compPriceVal = featuredProd.compareAtPrice || Math.round(featuredProd.price * 1.15);
+                              const rawImageSrc = activePreviewHero.heroImage || (featuredProd.images?.length > 0 ? featuredProd.images[0].url : featuredProd.image);
+                              const imageSrc = getCloudinaryCroppedUrl(rawImageSrc, activePreviewHero);
+                              const hasStock = featuredProd.inventory > 0;
+
+                              return (
+                                <>
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <img src={imageSrc} className="w-9 h-9 rounded object-cover border border-[#EDE7D9] shrink-0" />
+                                    <div className="min-w-0">
+                                      <span className="block text-[7px] font-bold text-stone-400 uppercase tracking-widest">Storefront visual card</span>
+                                      <span className="block text-[9px] font-bold text-[#2F3B0C] truncate leading-tight">{titleVal}</span>
+                                      <span className={`block text-[6px] font-extrabold uppercase mt-0.5 ${hasStock ? 'text-green-600' : 'text-red-500'}`}>
+                                        {hasStock ? `In Stock (${featuredProd.inventory})` : 'Sold Out'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <div className="text-right">
+                                      <span className="block text-[9px] font-bold text-[#4E641A]">₹{priceVal}</span>
+                                      <span className="block text-[7px] line-through text-stone-455">₹{compPriceVal}</span>
+                                    </div>
+                                    {activePreviewHero.offerBadgeText?.trim() && (
+                                      <span className="bg-[#C68A2B] text-white text-[7px] font-extrabold uppercase py-0.5 px-1.5 rounded-full shadow-sm leading-none shrink-0">
+                                        {activePreviewHero.offerBadgeText.trim()}
+                                      </span>
+                                    )}
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        ) : null}
+
+                        {/* Simulated Floating Badge */}
+                        {(activePreviewHero.floatingBadgeTitle?.trim() || activePreviewHero.floatingBadgeSubtitle?.trim()) && (
+                          <div className="absolute top-4 right-4 bg-white/95 border border-[#EAE4D8] rounded-lg p-1.5 shadow-sm flex items-center space-x-1.5 z-20">
+                            <span className="text-xs">🌾</span>
+                            <div className="text-left leading-none font-sans">
+                              {activePreviewHero.floatingBadgeTitle?.trim() && <span className="block text-[7px] font-bold text-[#2F3B0C]">{activePreviewHero.floatingBadgeTitle.trim()}</span>}
+                              {activePreviewHero.floatingBadgeSubtitle?.trim() && <span className="block text-[6px] text-stone-450 uppercase tracking-wider font-semibold mt-0.5">{activePreviewHero.floatingBadgeSubtitle.trim()}</span>}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {selectedSubTab === 'collections' && (
                     <div className="w-full space-y-4">
@@ -8619,12 +11169,17 @@ export default function AdminDashboard() {
                         <h3 className="font-serif text-sm font-bold text-[#2F3B0C] mt-0.5">Storefront Section Order</h3>
                       </div>
                       <div className="space-y-1.5 max-h-[250px] overflow-y-auto no-scrollbar font-mono text-[7px] font-bold uppercase tracking-widest">
-                        {sectionOrder.split(',').map((sect, idx) => (
-                          <div key={sect} className="bg-white border border-[#EDE7D9] rounded p-2 flex items-center justify-between text-stone-500 shadow-sm border-l-2 border-l-[#4E641A]">
-                            <span>{idx + 1}. {sect}</span>
-                            <span className="text-[6px] text-stone-300">Section block</span>
-                          </div>
-                        ))}
+                        {sectionOrder.split(',').map((sect, idx) => {
+                          const isVisible = settings[`homepage_section_visible_${sect}`] !== 'false';
+                          return (
+                            <div key={sect} className={`bg-white border border-[#EDE7D9] rounded p-2 flex items-center justify-between shadow-sm border-l-2 ${
+                              isVisible ? 'text-stone-700 border-l-[#4E641A]' : 'text-stone-300 border-l-stone-200 opacity-60'
+                            }`}>
+                              <span>{idx + 1}. {sect}</span>
+                              <span className="text-[6px] uppercase tracking-wider">{isVisible ? 'Active' : 'Hidden'}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

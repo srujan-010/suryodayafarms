@@ -13,7 +13,7 @@
 export const getOptimizedImageUrl = (url, options = {}) => {
   if (!url) return '';
 
-  const { width, height, cropMode = 'fill', crop } = options;
+  const { width, height, cropMode = 'fill', crop, quality = 'auto:best' } = options;
 
   // Cloudinary URL Optimization
   if (url.includes('res.cloudinary.com')) {
@@ -37,11 +37,13 @@ export const getOptimizedImageUrl = (url, options = {}) => {
         transformations.push(`h_${height}`);
       }
       if (width || height) {
-        transformations.push(`c_${cropMode}`);
+        // Map 'fit' to 'limit' to prevent Cloudinary from upscaling original images
+        const finalCropMode = cropMode === 'fit' ? 'limit' : cropMode;
+        transformations.push(`c_${finalCropMode}`);
       }
 
       // Force format auto-detection and modern compression
-      transformations.push('f_auto,q_auto');
+      transformations.push(`f_auto,q_${quality}`);
 
       return `${prefix}${transformations.join('/')}/${suffix}`;
     }
@@ -63,3 +65,59 @@ export const getOptimizedImageUrl = (url, options = {}) => {
 
   return url;
 };
+
+/**
+ * Generates a srcset string for Cloudinary images.
+ */
+export const getCloudinarySrcSet = (url, options = {}) => {
+  if (!url || !url.includes('res.cloudinary.com')) return '';
+
+  const { widths = [400, 800, 1500], cropMode = 'limit', crop, quality = 'auto:best' } = options;
+
+  return widths
+    .map(w => {
+      const optUrl = getOptimizedImageUrl(url, {
+        width: w,
+        cropMode,
+        crop,
+        quality
+      });
+      return `${optUrl} ${w}w`;
+    })
+    .join(', ');
+};
+
+/**
+ * Generates a srcset string for Unsplash images.
+ */
+export const getUnsplashSrcSet = (url, options = {}) => {
+  const { widths = [400, 800, 1500] } = options;
+  try {
+    return widths
+      .map(w => {
+        const parsedUrl = new URL(url);
+        parsedUrl.searchParams.set('auto', 'format');
+        parsedUrl.searchParams.set('q', '80');
+        parsedUrl.searchParams.set('w', w.toString());
+        return `${parsedUrl.toString()} ${w}w`;
+      })
+      .join(', ');
+  } catch (e) {
+    return '';
+  }
+};
+
+/**
+ * Unified helper to generate a responsive srcset string.
+ */
+export const getImageSrcSet = (url, options = {}) => {
+  if (!url) return '';
+  if (url.includes('res.cloudinary.com')) {
+    return getCloudinarySrcSet(url, options);
+  }
+  if (url.includes('unsplash.com')) {
+    return getUnsplashSrcSet(url, options);
+  }
+  return '';
+};
+

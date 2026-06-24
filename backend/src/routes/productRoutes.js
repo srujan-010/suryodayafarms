@@ -1,6 +1,7 @@
 import express from 'express';
 import prisma from '../utils/db.js';
 import { protect } from '../middlewares/authMiddleware.js';
+import { mapProduct } from '../utils/productMapper.js';
 
 const router = express.Router();
 
@@ -65,7 +66,6 @@ router.get('/', async (req, res, next) => {
       prisma.product.findMany({
         where: filter,
         include: {
-          images: true,
           variants: true,
           categories: true,
           reviews: {
@@ -87,13 +87,11 @@ router.get('/', async (req, res, next) => {
         ? parseFloat((prod.reviews.reduce((acc, rev) => acc + rev.rating, 0) / totalReviews).toFixed(1))
         : 0; // default to 0 (no reviews)
 
-      return {
+      return mapProduct({
         ...prod,
         averageRating,
-        totalReviews,
-        galleryImage: prod.hoverImage || null,
-        galleryImages: prod.hoverImage ? [prod.hoverImage] : []
-      };
+        totalReviews
+      });
     });
 
     res.status(200).json({
@@ -156,7 +154,6 @@ router.get('/:slug', async (req, res, next) => {
     const product = await prisma.product.findUnique({
       where: { slug },
       include: {
-        images: true,
         variants: true,
         categories: true,
         reviews: {
@@ -183,13 +180,11 @@ router.get('/:slug', async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      product: {
+      product: mapProduct({
         ...product,
         averageRating,
-        totalReviews,
-        galleryImage: product.hoverImage || null,
-        galleryImages: product.hoverImage ? [product.hoverImage] : []
-      }
+        totalReviews
+      })
     });
   } catch (error) {
     next(error);

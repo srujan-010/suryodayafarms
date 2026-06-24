@@ -190,45 +190,6 @@
 
 /* Custom media overrides for homepage sections */
 @media (max-width: 768px) {
-  .signature-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 12px !important;
-  }
-
-  .signature-card {
-    width: 100% !important;
-    min-height: 260px !important;
-    height: 260px !important;
-  }
-
-  .signature-card img {
-    height: 100% !important;
-    object-fit: cover !important;
-  }
-
-  .signature-overlay {
-    padding: 12px !important;
-    bottom: 12px !important;
-    left: 12px !important;
-    right: 12px !important;
-    border-radius: 16px !important;
-  }
-
-  .signature-title {
-    font-size: 1.1rem !important;
-    line-height: 1.2 !important;
-  }
-
-  .signature-subtitle,
-  .signature-description {
-    font-size: 0.72rem !important;
-    line-height: 1.3 !important;
-  }
-
-  .signature-button {
-    font-size: 0.72rem !important;
-  }
 
   /* Health Benefits mobile responsive overrides */
   .benefits-grid {
@@ -649,7 +610,7 @@
 
   /* Mobile Hero Slider Overrides */
   .home-hero-section {
-    padding-top: 14px !important;
+    padding-top: 96px !important;
     padding-bottom: 24px !important;
     padding-left: 14px !important;
     padding-right: 14px !important;

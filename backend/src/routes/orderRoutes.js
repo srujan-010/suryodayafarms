@@ -2,6 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import prisma from '../utils/db.js';
 import { protect } from '../middlewares/authMiddleware.js';
+import { mapCartItem, mapWishlistItem, mapOrder } from '../utils/productMapper.js';
 
 const router = express.Router();
 
@@ -21,6 +22,21 @@ export const mapOrderLogistics = (order) => {
   };
 };
 
+const parseWeightToKG = (weightStr) => {
+  if (!weightStr) return 0.5; // Default to 500g if undefined/null
+  const normalized = weightStr.toLowerCase().replace(/\s+/g, '');
+  const numMatch = normalized.match(/^(\d+(?:\.\d+)?)/);
+  if (!numMatch) return 0.5;
+  const value = parseFloat(numMatch[1]);
+  if (normalized.includes('kg') || normalized.includes('kilo') || normalized.includes('l') && !normalized.includes('ml')) {
+    return value;
+  }
+  if (normalized.includes('g') || normalized.includes('gm') || normalized.includes('ml')) {
+    return value / 1000;
+  }
+  return value >= 10 ? value / 1000 : value;
+};
+
 // ================= SHOPPING CART CRUD =================
 
 // 1. GET ACTIVE CART ITEMS
@@ -30,14 +46,14 @@ router.get('/cart', protect, async (req, res, next) => {
     const cartItems = await prisma.cartItem.findMany({
       where: { userId: req.user.id },
       include: {
-        product: {
-          include: { images: true }
-        },
+        product: true,
         variant: true,
       },
     });
 
-    res.status(200).json({ success: true, count: cartItems.length, cartItems });
+    const mappedCartItems = cartItems.map(mapCartItem);
+
+    res.status(200).json({ success: true, count: mappedCartItems.length, cartItems: mappedCartItems });
   } catch (error) {
     next(error);
   }
@@ -154,13 +170,13 @@ router.get('/wishlist', protect, async (req, res, next) => {
     const wishlist = await prisma.wishlistItem.findMany({
       where: { userId: req.user.id },
       include: {
-        product: {
-          include: { images: true }
-        }
+        product: true
       }
     });
 
-    res.status(200).json({ success: true, count: wishlist.length, wishlist });
+    const mappedWishlist = wishlist.map(mapWishlistItem);
+
+    res.status(200).json({ success: true, count: mappedWishlist.length, wishlist: mappedWishlist });
   } catch (error) {
     next(error);
   }
@@ -323,11 +339,39 @@ router.post('/checkout', protect, async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Selected address not found.' });
     }
 
-    // Calculate Cart Math
+    // Fetch website configurations for shipping
+    const settings = await prisma.websiteSetting.findMany();
+    const settingsObj = settings.reduce((acc, curr) => {
+      acc[curr.key] = curr.value;
+      return acc;
+    }, {});
+
+    const freeDeliveryThreshold = parseFloat(settingsObj.freeDeliveryThreshold || '2');
+    const shippingCharge = parseFloat(settingsObj.shippingCharge || '80');
+    const serviceableStatesStr = settingsObj.serviceableStates || 'Telangana, Andhra Pradesh';
+    const serviceableStates = serviceableStatesStr
+      .split(',')
+      .map(s => s.trim().toLowerCase());
+
+    // Validate if the address state is in serviceable locations
+    const addressState = (address.state || '').trim().toLowerCase();
+    if (!serviceableStates.includes(addressState)) {
+      return res.status(400).json({
+        success: false,
+        message: `Suryodaya Farms only services locations in: ${serviceableStatesStr}. Selected state "${address.state}" is not serviceable.`
+      });
+    }
+
+    // Calculate Cart Weight & Math
     let subtotal = 0;
+    let totalWeight = 0;
     cartItems.forEach((item) => {
       const price = item.variant ? item.variant.price : item.product.price;
       subtotal += price * item.quantity;
+
+      const weightStr = item.variant ? item.variant.name : item.product.weight;
+      const parsedWeight = parseWeightToKG(weightStr);
+      totalWeight += parsedWeight * item.quantity;
     });
 
     // Validate Coupon if any
@@ -359,7 +403,13 @@ router.post('/checkout', protect, async (req, res, next) => {
       }
     }
 
-    const totalAmount = Math.max(subtotal - discountAmount, 0);
+    // Apply shipping charge based on cart weight
+    let shippingFee = 0;
+    if (totalWeight < freeDeliveryThreshold) {
+      shippingFee = shippingCharge;
+    }
+
+    const totalAmount = Math.max(subtotal - discountAmount + shippingFee, 0);
     const orderNumber = `SURY-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     // Build database order data
@@ -495,9 +545,7 @@ router.get('/history', protect, async (req, res, next) => {
       include: {
         orderItems: {
           include: {
-            product: {
-              include: { images: true }
-            },
+            product: true,
             variant: true
           }
         }
@@ -505,7 +553,9 @@ router.get('/history', protect, async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    res.status(200).json({ success: true, count: orders.length, orders: orders.map(mapOrderLogistics) });
+    const mappedOrders = orders.map(order => mapOrder(mapOrderLogistics(order)));
+
+    res.status(200).json({ success: true, count: mappedOrders.length, orders: mappedOrders });
   } catch (error) {
     next(error);
   }
@@ -522,9 +572,7 @@ router.get('/history/:orderId', protect, async (req, res, next) => {
       include: {
         orderItems: {
           include: {
-            product: {
-              include: { images: true }
-            },
+            product: true,
             variant: true
           }
         }
@@ -535,7 +583,7 @@ router.get('/history/:orderId', protect, async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Order details not found.' });
     }
 
-    res.status(200).json({ success: true, order: mapOrderLogistics(order) });
+    res.status(200).json({ success: true, order: mapOrder(mapOrderLogistics(order)) });
   } catch (error) {
     next(error);
   }

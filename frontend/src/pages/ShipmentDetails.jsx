@@ -13,7 +13,8 @@ import {
   FiRefreshCw,
   FiMapPin,
   FiCreditCard,
-  FiExternalLink
+  FiExternalLink,
+  FiHelpCircle
 } from 'react-icons/fi';
 import { GiSun } from 'react-icons/gi';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -30,6 +31,94 @@ export default function ShipmentDetails() {
   const [error, setError] = useState(null);
   const [activeInvoice, setActiveInvoice] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
+
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [supportSubject, setSupportSubject] = useState('');
+  const [supportMessage, setSupportMessage] = useState('');
+  const [supportImage, setSupportImage] = useState(null);
+  const [isSubmittingSupport, setIsSubmittingSupport] = useState(false);
+  const [supportSuccess, setSupportSuccess] = useState(false);
+  const [supportTicketNumber, setSupportTicketNumber] = useState('');
+  const [supportError, setSupportError] = useState(null);
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setSupportError('Please upload an image file.');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setSupportError('Image size should be less than 5MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSupportImage(reader.result);
+      setSupportError(null);
+    };
+    reader.onerror = () => {
+      setSupportError('Failed to read file.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmitSupport = async (e) => {
+    e.preventDefault();
+    if (!supportSubject) {
+      setSupportError('Please select a subject.');
+      return;
+    }
+    if (!supportMessage.trim()) {
+      setSupportError('Please enter a message.');
+      return;
+    }
+
+    setIsSubmittingSupport(true);
+    setSupportError(null);
+
+    try {
+      let finalImageUrl = null;
+      if (supportImage) {
+        // Upload to Cloudinary
+        const uploadRes = await api.post('/auth/upload-cloudinary', {
+          image: supportImage,
+          folder: 'tickets'
+        });
+        if (uploadRes.success && uploadRes.url) {
+          finalImageUrl = uploadRes.url;
+        } else {
+          throw new Error(uploadRes.message || 'Image upload failed');
+        }
+      }
+
+      // Create Ticket
+      const ticketRes = await api.post('/support/tickets', {
+        orderId: order.id,
+        subject: supportSubject,
+        message: supportMessage,
+        imageUrl: finalImageUrl
+      });
+
+      if (ticketRes.success && ticketRes.ticket) {
+        setSupportSuccess(true);
+        setSupportTicketNumber(ticketRes.ticket.ticketNumber);
+        // Reset form fields
+        setSupportSubject('');
+        setSupportMessage('');
+        setSupportImage(null);
+      } else {
+        throw new Error(ticketRes.message || 'Failed to create support ticket');
+      }
+    } catch (err) {
+      setSupportError(err.message || 'An error occurred while creating ticket.');
+    } finally {
+      setIsSubmittingSupport(false);
+    }
+  };
 
   useEffect(() => {
     const fetchOrderDetails = async () => {
@@ -610,6 +699,24 @@ export default function ShipmentDetails() {
           </div>
         </div>
 
+        {/* Need Help With This Order Card */}
+        <div className="bg-white border border-[#EAE4D8] rounded-[28px] p-6 md:p-8 shadow-sm text-left flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+          <div className="space-y-2">
+            <h2 className="font-serif text-lg font-bold text-[#2F3B0C] flex items-center gap-2">
+              <FiHelpCircle className="text-[#C68A2B]" /> Need Help With This Order?
+            </h2>
+            <p className="text-xs text-stone-500 max-w-xl leading-relaxed">
+              Have issues with delivery delays, damaged items, or wrong weight? Get in touch with our support team by creating a ticket linked to this shipment.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowSupportModal(true)}
+            className="px-5 py-3 bg-[#C68A2B] hover:bg-[#B8833E] text-white text-xs font-bold uppercase tracking-wider rounded-xl transition duration-300 shadow-sm shrink-0 whitespace-nowrap cursor-pointer border-none"
+          >
+            Create Support Ticket
+          </button>
+        </div>
+
       </div>
 
       {/* 5. Invoice receipt modal popup */}
@@ -686,6 +793,157 @@ export default function ShipmentDetails() {
               >
                 Download Receipt PDF
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Support Ticket Modal Popup */}
+      <AnimatePresence>
+        {showSupportModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!isSubmittingSupport) {
+                  setShowSupportModal(false);
+                  setSupportSuccess(false);
+                  setSupportError(null);
+                }
+              }} 
+              className="absolute inset-0 bg-[#2F3B0C]/45 backdrop-blur-sm" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: "spring", stiffness: 100, damping: 15 }}
+              className="relative bg-white border border-[#EAE4D8] rounded-[28px] p-6 md:p-8 w-full max-w-lg shadow-2xl z-10 text-left space-y-5"
+            >
+              <div className="flex items-center justify-between border-b pb-4">
+                <div className="flex items-center gap-2">
+                  <GiSun className="w-5 h-5 text-[#C68A2B] animate-spin-slow" />
+                  <span className="font-serif text-base font-bold text-[#2F3B0C]">Order Support Center</span>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setShowSupportModal(false);
+                    setSupportSuccess(false);
+                    setSupportError(null);
+                  }} 
+                  disabled={isSubmittingSupport}
+                  className="text-stone-400 font-extrabold cursor-pointer hover:text-stone-600 transition border-none bg-transparent"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {supportSuccess ? (
+                <div className="text-center py-6 space-y-4">
+                  <div className="w-16 h-16 bg-[#4E641A]/10 text-[#4E641A] rounded-full flex items-center justify-center text-3xl mx-auto">
+                    ✓
+                  </div>
+                  <h3 className="font-serif text-lg font-bold text-[#2F3B0C]">Ticket Submitted Successfully</h3>
+                  <p className="text-xs text-stone-500 leading-relaxed font-medium">
+                    Your support request has been recorded under ticket number <strong className="text-[#C68A2B]">{supportTicketNumber}</strong>. Our farm coordinators will update your ticket timeline shortly.
+                  </p>
+                  <div className="pt-2 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate('/profile', { state: { selectTab: 'tickets' } })}
+                      className="w-full py-3 bg-[#4E641A] hover:bg-[#2F3B0C] text-white text-xs font-bold uppercase tracking-widest rounded-xl transition duration-300 cursor-pointer border-none"
+                    >
+                      View Support Tickets
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSupportModal(false);
+                        setSupportSuccess(false);
+                      }}
+                      className="w-full py-3 border border-[#EAE4D8] hover:bg-stone-50 text-stone-700 text-xs font-bold uppercase tracking-widest rounded-xl transition duration-300 cursor-pointer bg-transparent"
+                    >
+                      Back to Shipment
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitSupport} className="space-y-4 text-xs font-semibold text-stone-700">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#C68A2B] block">Subject</label>
+                    <select
+                      value={supportSubject}
+                      onChange={(e) => setSupportSubject(e.target.value)}
+                      required
+                      className="w-full p-3 border border-[#EAE4D8] rounded-xl text-stone-700 font-sans focus:outline-none focus:ring-1 focus:ring-[#4E641A]"
+                    >
+                      <option value="">Select an option</option>
+                      <option value="Late Delivery">Late Delivery</option>
+                      <option value="Damaged Item">Damaged Item</option>
+                      <option value="Missing Items">Missing Items</option>
+                      <option value="Incorrect Quantity">Incorrect Quantity</option>
+                      <option value="Payment Issue">Payment Issue</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#C68A2B] block">Message / Description</label>
+                    <textarea
+                      value={supportMessage}
+                      onChange={(e) => setSupportMessage(e.target.value)}
+                      required
+                      rows={4}
+                      placeholder="Please explain the issue you are facing with this shipment in detail..."
+                      className="w-full p-3 border border-[#EAE4D8] rounded-xl text-stone-700 font-sans focus:outline-none focus:ring-1 focus:ring-[#4E641A]"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-extrabold uppercase tracking-widest text-[#C68A2B] block">Attach Image (Optional)</label>
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center justify-center px-4 py-2 border-2 border-dashed border-[#EAE4D8] hover:border-[#4E641A] rounded-xl cursor-pointer text-stone-600 transition">
+                        <span className="text-[10px] uppercase tracking-wider font-extrabold text-[#4E641A]">Choose Photo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageChange}
+                          className="hidden"
+                        />
+                      </label>
+                      {supportImage && (
+                        <div className="relative w-12 h-12 rounded-lg border border-[#EAE4D8] overflow-hidden shrink-0">
+                          <img src={supportImage} alt="Preview" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setSupportImage(null)}
+                            className="absolute -top-1 -right-1 bg-red-650 text-white rounded-full w-4 h-4 flex items-center justify-center text-[8px] font-extrabold cursor-pointer border-none"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {supportError && (
+                    <div className="p-3 bg-red-50 text-red-655 border border-red-100 rounded-xl text-[10px] font-semibold">
+                      {supportError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isSubmittingSupport}
+                    className="w-full py-3.5 bg-[#4E641A] hover:bg-[#2F3B0C] text-white text-xs font-bold uppercase tracking-widest rounded-xl shadow-md transition duration-300 cursor-pointer border-none flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isSubmittingSupport ? 'Submitting request...' : 'Submit Support Ticket'}
+                  </button>
+                </form>
+              )}
             </motion.div>
           </div>
         )}

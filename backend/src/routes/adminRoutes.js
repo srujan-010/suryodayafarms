@@ -3,6 +3,7 @@ import prisma from '../utils/db.js';
 import { protect, adminOnly } from '../middlewares/authMiddleware.js';
 import { mapOrderLogistics } from './orderRoutes.js';
 import cloudinary from '../utils/cloudinary.js';
+import { mapProduct, mapProducts } from '../utils/productMapper.js';
 
 const router = express.Router();
 
@@ -89,7 +90,7 @@ router.post('/products', async (req, res, next) => {
     sku, inventory, hoverImage, mobileBanner,
     isFeatured, isTrending, isBestseller, isNewLaunch, isVisible, isComingSoon,
     nutrients, origin, shelfLife, deliveryEta, codAvailable, returnEligible, weight,
-    seoTitle, seoDescription, seoKeywords, image, variants
+    seoTitle, seoDescription, seoKeywords, image, images, variants
   } = req.body;
 
   try {
@@ -99,6 +100,23 @@ router.post('/products', async (req, res, next) => {
     }
 
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+
+    let finalImages = ['', '', '', ''];
+    if (images && Array.isArray(images)) {
+      finalImages = [
+        images[0] || '',
+        images[1] || '',
+        images[2] || '',
+        images[3] || ''
+      ];
+    } else {
+      finalImages = [
+        image || '',
+        hoverImage || '',
+        '',
+        ''
+      ];
+    }
 
     const product = await prisma.product.create({
       data: {
@@ -119,7 +137,7 @@ router.post('/products', async (req, res, next) => {
         stockStatus: stockStatus || 'IN_STOCK',
         sku,
         inventory: parseInt(inventory, 10) || 0,
-        hoverImage: hoverImage || '',
+        hoverImage: finalImages[1] || '',
         mobileBanner: mobileBanner || '',
         isFeatured: !!isFeatured,
         isTrending: !!isTrending,
@@ -137,9 +155,7 @@ router.post('/products', async (req, res, next) => {
         seoTitle: seoTitle || '',
         seoDescription: seoDescription || '',
         seoKeywords: seoKeywords || '',
-        images: {
-          create: image ? [{ url: image, isFeatured: true }] : []
-        },
+        images: finalImages,
         variants: {
           create: (variants && Array.isArray(variants)) ? variants.map(v => ({
             name: v.name,
@@ -150,10 +166,10 @@ router.post('/products', async (req, res, next) => {
           })) : []
         }
       },
-      include: { images: true, variants: true }
+      include: { variants: true }
     });
 
-    res.status(201).json({ success: true, product });
+    res.status(201).json({ success: true, product: mapProduct(product) });
   } catch (error) {
     next(error);
   }
@@ -169,7 +185,7 @@ router.put('/products/:id', async (req, res, next) => {
     sku, inventory, hoverImage, mobileBanner,
     isFeatured, isTrending, isBestseller, isNewLaunch, isVisible, isComingSoon,
     nutrients, origin, shelfLife, deliveryEta, codAvailable, returnEligible, weight,
-    seoTitle, seoDescription, seoKeywords, image, variants
+    seoTitle, seoDescription, seoKeywords, image, images, variants
   } = req.body;
 
   try {
@@ -223,19 +239,30 @@ router.put('/products/:id', async (req, res, next) => {
       updatedData.slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
     }
 
+    let finalImages = exists.images;
+    if (images && Array.isArray(images)) {
+      finalImages = [
+        images[0] || '',
+        images[1] || '',
+        images[2] || '',
+        images[3] || ''
+      ];
+    } else if (image !== undefined) {
+      finalImages = [
+        image || '',
+        hoverImage !== undefined ? hoverImage : exists.images?.[1] || '',
+        exists.images?.[2] || '',
+        exists.images?.[3] || ''
+      ];
+    }
+    updatedData.images = finalImages;
+    updatedData.hoverImage = finalImages[1] || '';
+
     const product = await prisma.product.update({
       where: { id },
       data: updatedData,
-      include: { images: true, variants: true }
+      include: { variants: true }
     });
-
-    // If an image URL is sent, overwrite images
-    if (image) {
-      await prisma.productImage.deleteMany({ where: { productId: id } });
-      await prisma.productImage.create({
-        data: { productId: id, url: image, isFeatured: true }
-      });
-    }
 
     // Sync product variants
     if (variants && Array.isArray(variants)) {
@@ -283,7 +310,7 @@ router.put('/products/:id', async (req, res, next) => {
       }
     }
 
-    res.status(200).json({ success: true, product });
+    res.status(200).json({ success: true, product: mapProduct(product) });
   } catch (error) {
     next(error);
   }
@@ -315,13 +342,12 @@ router.get('/products', async (req, res, next) => {
   try {
     const products = await prisma.product.findMany({
       include: {
-        images: true,
         categories: true,
         variants: true
       },
       orderBy: { createdAt: 'desc' }
     });
-    res.status(200).json({ success: true, products });
+    res.status(200).json({ success: true, products: mapProducts(products) });
   } catch (error) {
     next(error);
   }
@@ -330,7 +356,7 @@ router.get('/products', async (req, res, next) => {
 // CREATE CATEGORY
 // POST /api/admin/categories
 router.post('/categories', async (req, res, next) => {
-  const { name, description, image, seoTitle, seoDescription } = req.body;
+  const { name, description, image, seoTitle, seoDescription, isVisible, homepageVisible, isFeatured } = req.body;
 
   try {
     if (!name) {
@@ -350,7 +376,10 @@ router.post('/categories', async (req, res, next) => {
         description, 
         image,
         seoTitle: seoTitle || null,
-        seoDescription: seoDescription || null
+        seoDescription: seoDescription || null,
+        isVisible: isVisible !== undefined ? Boolean(isVisible) : true,
+        homepageVisible: homepageVisible !== undefined ? Boolean(homepageVisible) : true,
+        isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : false
       },
     });
 
@@ -364,7 +393,7 @@ router.post('/categories', async (req, res, next) => {
 // PUT /api/admin/categories/:id
 router.put('/categories/:id', async (req, res, next) => {
   const { id } = req.params;
-  const { name, description, image, seoTitle, seoDescription } = req.body;
+  const { name, description, image, seoTitle, seoDescription, isVisible, homepageVisible, isFeatured } = req.body;
 
   try {
     const exists = await prisma.category.findUnique({ where: { id } });
@@ -379,6 +408,10 @@ router.put('/categories/:id', async (req, res, next) => {
       seoTitle: seoTitle || null,
       seoDescription: seoDescription || null
     };
+
+    if (isVisible !== undefined) updatedData.isVisible = Boolean(isVisible);
+    if (homepageVisible !== undefined) updatedData.homepageVisible = Boolean(homepageVisible);
+    if (isFeatured !== undefined) updatedData.isFeatured = Boolean(isFeatured);
 
     if (name) {
       const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
@@ -408,7 +441,6 @@ router.get('/categories/:id', async (req, res, next) => {
       where: { id },
       include: {
         products: {
-          include: { images: true },
           orderBy: { createdAt: 'desc' }
         },
         _count: {
@@ -420,6 +452,8 @@ router.get('/categories/:id', async (req, res, next) => {
     if (!category || category.slug === 'uncategorized' || category.name.toLowerCase() === 'uncategorized') {
       return res.status(404).json({ success: false, message: 'Category not found.' });
     }
+
+    category.products = mapProducts(category.products);
 
     res.status(200).json({ success: true, category });
   } catch (error) {
@@ -844,8 +878,22 @@ router.get('/customers', async (req, res, next) => {
         id: true,
         name: true,
         email: true,
+        avatarUrl: true,
         createdAt: true,
-        _count: { select: { orders: true } }
+        addresses: {
+          orderBy: { isDefault: 'desc' }
+        },
+        orders: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            orderItems: {
+              include: {
+                product: true,
+                variant: true
+              }
+            }
+          }
+        }
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -1158,7 +1206,16 @@ router.get('/homepage/hero', async (req, res, next) => {
     const heroes = await prisma.homepageHero.findMany({
       orderBy: { updatedAt: 'desc' }
     });
-    res.status(200).json({ success: true, heroes });
+    const mappedHeroes = heroes.map(h => ({
+      ...h,
+      showcaseImage: h.heroImage,
+      offerBadge: h.offerBadgeText,
+      floatingBadge: (h.floatingBadgeTitle || h.floatingBadgeSubtitle) ? {
+        title: h.floatingBadgeTitle || '',
+        subtitle: h.floatingBadgeSubtitle || ''
+      } : null
+    }));
+    res.status(200).json({ success: true, heroes: mappedHeroes });
   } catch (error) {
     next(error);
   }
@@ -1359,7 +1416,10 @@ router.get('/settings', async (req, res, next) => {
       socialTwitter: 'https://twitter.com/suryodayafarms',
       socialFacebook: 'https://facebook.com/suryodayafarms',
       socialInstagram: 'https://instagram.com/suryodayafarms',
-      socialYoutube: 'https://youtube.com/suryodayafarms'
+      socialYoutube: 'https://youtube.com/suryodayafarms',
+      freeDeliveryThreshold: '2',
+      shippingCharge: '80',
+      serviceableStates: 'Telangana, Andhra Pradesh'
     };
 
     res.status(200).json({
@@ -1396,7 +1456,6 @@ router.get('/reviews/products-summary', async (req, res, next) => {
   try {
     const products = await prisma.product.findMany({
       include: {
-        images: true,
         categories: true,
         reviews: true
       }
@@ -1415,7 +1474,7 @@ router.get('/reviews/products-summary', async (req, res, next) => {
       return {
         id: prod.id,
         name: prod.name,
-        image: prod.images?.[0]?.url || '',
+        image: prod.images?.[0] || '',
         category: prod.categories?.[0]?.name || 'Staples',
         averageRating,
         totalReviews,
@@ -1437,7 +1496,6 @@ router.get('/reviews/product/:productId', async (req, res, next) => {
     const product = await prisma.product.findUnique({
       where: { id: productId },
       include: {
-        images: true,
         categories: true,
         reviews: {
           orderBy: { createdAt: 'desc' }
@@ -1464,7 +1522,7 @@ router.get('/reviews/product/:productId', async (req, res, next) => {
       product: {
         id: product.id,
         name: product.name,
-        image: product.images?.[0]?.url || '',
+        image: product.images?.[0] || '',
         category: product.categories?.[0]?.name || 'Staples',
         averageRating,
         totalReviews,
@@ -1500,12 +1558,26 @@ router.get('/reviews', async (req, res, next) => {
       where: filter,
       include: {
         product: {
-          select: { name: true, image: true, images: true }
+          select: { name: true, images: true }
         }
       },
       orderBy: { createdAt: 'desc' }
     });
-    res.status(200).json({ success: true, count: reviews.length, reviews });
+
+    const mappedReviews = reviews.map(rev => {
+      if (rev.product) {
+        const productCopy = { ...rev.product };
+        productCopy.image = productCopy.images?.[0] || '';
+        productCopy.images = (productCopy.images || []).map((url, idx) => ({
+          url,
+          isFeatured: idx === 0
+        }));
+        rev.product = productCopy;
+      }
+      return rev;
+    });
+
+    res.status(200).json({ success: true, count: mappedReviews.length, reviews: mappedReviews });
   } catch (error) {
     next(error);
   }

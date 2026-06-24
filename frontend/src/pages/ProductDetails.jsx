@@ -7,9 +7,10 @@ import { useCartStore } from '../store/useCartStore';
 import { useWishlistStore } from '../store/useWishlistStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { useModalStore } from '../store/useModalStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import api from '../utils/api';
 import UnifiedUploader from '../components/UnifiedUploader';
-import { getOptimizedImageUrl } from '../utils/imageOptimizer';
+import { getOptimizedImageUrl, getImageSrcSet } from '../utils/imageOptimizer';
 
 // Simple, high-quality, organic confetti effect
 const triggerConfetti = (canvasEl) => {
@@ -76,11 +77,30 @@ export default function ProductDetails() {
   const { slug } = useParams();
   const navigate = useNavigate();
 
+  const [navbarHeight, setNavbarHeight] = useState(120);
+
+  useEffect(() => {
+    const updateNavbarHeight = () => {
+      const navEl = document.querySelector('.app-header-nav');
+      if (navEl) {
+        setNavbarHeight(navEl.offsetHeight);
+      }
+    };
+    updateNavbarHeight();
+    const timer = setTimeout(updateNavbarHeight, 150);
+    window.addEventListener('resize', updateNavbarHeight);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateNavbarHeight);
+    };
+  }, []);
+
   const [product, setProduct] = useState(null);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
   const [activeImage, setActiveImage] = useState('');
+  const [isMainImageLoaded, setIsMainImageLoaded] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [allVariants, setAllVariants] = useState([]);
   const [isAdding, setIsAdding] = useState(false);
@@ -101,16 +121,25 @@ export default function ProductDetails() {
   const toggleWishlist = useWishlistStore(state => state.toggleWishlist);
   const { isAuthenticated } = useAuthStore();
   const modal = useModalStore();
+  const { settings, fetchSettings } = useSettingsStore();
 
   const isProductWishlisted = product
     ? wishlistItems.some((item) => item.productId === product.id || item.id === product.id)
     : false;
 
   useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
+  useEffect(() => {
     if (slug) {
       fetchProductDetails();
     }
   }, [slug]);
+
+  useEffect(() => {
+    setIsMainImageLoaded(false);
+  }, [activeImage]);
 
   const getProductVariants = (prod) => {
     if (!prod) return [];
@@ -147,6 +176,25 @@ export default function ProductDetails() {
       const response = await api.get(`/products/${slug}`);
       const prod = response.product;
       setProduct(prod);
+      
+      // Save to recently viewed
+      try {
+        const saved = localStorage.getItem('recentlyViewed');
+        let list = saved ? JSON.parse(saved) : [];
+        list = list.filter((x) => x.id !== prod.id);
+        list.unshift({
+          id: prod.id,
+          slug: prod.slug,
+          name: prod.name,
+          price: prod.price,
+          weight: prod.weight || '500g',
+          image: prod.image || (prod.images?.length > 0 ? prod.images[0].url : '')
+        });
+        localStorage.setItem('recentlyViewed', JSON.stringify(list.slice(0, 6)));
+      } catch (err) {
+        console.error('Failed to save recently viewed product:', err);
+      }
+
       setActiveImage(prod.image || (prod.images?.length > 0 ? prod.images[0].url : ''));
       
       const compiledVariants = getProductVariants(prod);
@@ -291,46 +339,10 @@ export default function ProductDetails() {
 
   const getProductImagesList = () => {
     if (!product) return [];
-    const list = [];
-    
-    // Add Main Image
-    if (product.image) {
-      list.push(product.image);
-    } else if (product.images && product.images.length > 0) {
-      const featuredImg = product.images.find(img => img.isFeatured);
-      if (featuredImg) {
-        list.push(featuredImg.url);
-      } else {
-        list.push(product.images[0].url);
-      }
-    }
-    
-    // Add Gallery Image (hoverImage / galleryImage)
-    if (product.galleryImage) {
-      list.push(product.galleryImage);
-    } else if (product.hoverImage) {
-      list.push(product.hoverImage);
-    }
-    
-    // Add other images from images relation
     if (product.images && product.images.length > 0) {
-      product.images.forEach(img => {
-        if (!list.includes(img.url)) {
-          list.push(img.url);
-        }
-      });
+      return product.images.map(img => img.url).filter(Boolean);
     }
-    
-    // Add any from galleryImages array in case of future support
-    if (product.galleryImages && Array.isArray(product.galleryImages)) {
-      product.galleryImages.forEach(img => {
-        if (img && !list.includes(img)) {
-          list.push(img);
-        }
-      });
-    }
-    
-    return list.filter(Boolean);
+    return [product.image].filter(Boolean);
   };
 
   const onRenderCallback = (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
@@ -341,8 +353,11 @@ export default function ProductDetails() {
 
   return (
     <Profiler id="ProductDetails" onRender={onRenderCallback}>
-      <div className="min-h-screen bg-cream-bg pt-28 pb-20 px-6 md:px-12">
-      <div className="max-w-7xl mx-auto flex flex-col gap-16">
+      <div 
+        className="min-h-screen bg-cream-bg pb-32 lg:pb-20 px-4 sm:px-6 md:px-12"
+        style={{ paddingTop: `${navbarHeight + 20}px` }}
+      >
+      <div className="max-w-7xl mx-auto flex flex-col gap-10 sm:gap-16">
         
         {/* Back navigation */}
         <button
@@ -357,14 +372,24 @@ export default function ProductDetails() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
           {/* Column 1: Image Gallery & Badges */}
           <div className="flex flex-col gap-6 w-full text-left">
-            <div className="relative aspect-square w-full rounded-[36px] overflow-hidden border border-light-beige shadow-sm bg-light-beige">
+            <div className="relative aspect-square w-full rounded-[36px] overflow-hidden bg-transparent flex items-center justify-center">
+              {!isMainImageLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-transparent">
+                  <div className="w-24 h-24 rounded-full bg-light-beige/30 animate-pulse" />
+                </div>
+              )}
               <img
-                src={getOptimizedImageUrl(activeImage, { width: 600, height: 600, cropMode: 'fill' })}
+                src={getOptimizedImageUrl(activeImage, { width: 1500, cropMode: 'limit' })}
+                srcSet={getImageSrcSet(activeImage, { widths: [400, 800, 1500], cropMode: 'limit' })}
+                sizes="(max-width: 768px) 100vw, 50vw"
                 alt={product.name}
-                width={600}
-                height={600}
+                width={1500}
+                height={1500}
                 loading="lazy"
-                className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
+                onLoad={() => setIsMainImageLoaded(true)}
+                className={`w-full h-full object-contain p-6 filter drop-shadow-[0_15px_25px_rgba(0,0,0,0.15)] transition-all duration-700 hover:scale-105 ${
+                  isMainImageLoaded ? 'opacity-100' : 'opacity-0'
+                }`}
               />
               
               <button
@@ -381,17 +406,17 @@ export default function ProductDetails() {
                 <button
                   key={i}
                   onClick={() => setActiveImage(img)}
-                  className={`w-20 h-20 rounded-2xl overflow-hidden border transition-all duration-300 cursor-pointer ${
-                    activeImage === img ? 'border-primary-green scale-95 shadow-inner' : 'border-light-beige hover:border-sunrise-gold'
+                  className={`w-20 h-20 rounded-2xl overflow-hidden border transition-all duration-300 cursor-pointer bg-transparent ${
+                    activeImage === img ? 'border-primary-green scale-95 shadow-none' : 'border-light-beige hover:border-sunrise-gold'
                   }`}
                 >
                   <img 
-                    src={getOptimizedImageUrl(img, { width: 80, height: 80, cropMode: 'fill' })} 
+                    src={getOptimizedImageUrl(img, { width: 400, cropMode: 'limit' })} 
                     alt={`Product Thumbnail ${i + 1}`} 
                     width={80}
                     height={80}
                     loading="lazy"
-                    className="w-full h-full object-cover" 
+                    className="w-full h-full object-contain p-1 filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.08)]" 
                   />
                 </button>
               ))}
@@ -475,10 +500,6 @@ export default function ProductDetails() {
               </span>
             </div>
 
-            <p className="font-sans text-xs md:text-sm text-dark-text/75 leading-relaxed font-light">
-              {product.description}
-            </p>
-
             {/* Variant Selector */}
             {allVariants.length > 1 && (
               <div className="flex flex-col gap-3 my-2 border-t border-light-beige/50 pt-4">
@@ -528,7 +549,7 @@ export default function ProductDetails() {
               <button
                 onClick={handleAddToCart}
                 disabled={isOutOfStock || isAdding}
-                className={`flex-1 flex items-center justify-center gap-2 border font-sans text-xs font-semibold uppercase tracking-widest py-4.5 rounded-xl transition-colors duration-300 shadow-sm cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-2 border font-sans text-xs font-semibold uppercase tracking-widest py-4 rounded-xl transition-colors duration-300 shadow-sm cursor-pointer ${
                   isOutOfStock || isAdding
                     ? 'bg-stone-100 border-stone-200 text-stone-400 cursor-not-allowed'
                     : 'border-primary-green text-primary-green hover:bg-primary-green hover:text-white'
@@ -541,7 +562,7 @@ export default function ProductDetails() {
               <button
                 onClick={handleBuyNow}
                 disabled={isOutOfStock || isProcessing}
-                className={`flex-grow flex items-center justify-center font-sans text-xs font-semibold uppercase tracking-widest py-4.5 rounded-xl transition-colors duration-300 shadow-md cursor-pointer ${
+                className={`flex-grow flex items-center justify-center font-sans text-xs font-semibold uppercase tracking-widest py-4 rounded-xl transition-colors duration-300 shadow-md cursor-pointer ${
                   isOutOfStock || isProcessing
                     ? 'bg-stone-300 text-stone-400 cursor-not-allowed'
                     : 'bg-primary-green hover:bg-dark-olive text-white'
@@ -549,6 +570,28 @@ export default function ProductDetails() {
               >
                 {isOutOfStock ? 'Out of Stock' : isProcessing ? 'Processing...' : 'Buy Now'}
               </button>
+            </div>
+
+            {/* Product Description */}
+            <div className="border-t border-light-beige/50 pt-4 mt-2">
+              <span className="font-sans text-xs font-semibold text-dark-olive uppercase tracking-wider block mb-2">Description</span>
+              <p className="font-sans text-xs md:text-sm text-dark-text/75 leading-relaxed font-light">
+                {product.description}
+              </p>
+            </div>
+
+            {/* Dynamic Shipping Eligibility Message */}
+            <div className="bg-primary-green/5 border border-primary-green/20 rounded-xl p-4.5 text-left flex flex-col gap-1.5 mt-3 shadow-inner">
+              <span className="font-sans text-[10px] font-bold text-primary-green uppercase tracking-wider flex items-center gap-1.5">
+                <FiTruck className="text-xs" /> Shipping & Serviceability Details
+              </span>
+              <p className="font-sans text-xs text-dark-text/75 leading-relaxed font-light">
+                Enjoy <strong className="font-semibold text-primary-green">FREE Delivery</strong> for orders of <strong className="font-semibold text-dark-olive">{settings.freeDeliveryThreshold || '2'} KG</strong> or more. For smaller orders, a standard delivery fee of <strong className="font-semibold text-dark-olive">₹{settings.shippingCharge || '80'}</strong> applies.
+              </p>
+              <div className="w-full h-[0.5px] bg-primary-green/10 my-0.5" />
+              <p className="font-sans text-[10px] text-dark-text/60 leading-relaxed font-light">
+                📍 Currently delivering only to: <strong className="font-semibold text-sunrise-gold">{settings.serviceableStates || 'Telangana, Andhra Pradesh'}</strong>.
+              </p>
             </div>
 
             {/* WhatsApp direct CTA */}
@@ -617,7 +660,7 @@ export default function ProductDetails() {
                         {rev.reviewImages.map((img, index) => (
                           <img 
                             key={index} 
-                            src={getOptimizedImageUrl(img, { width: 48, height: 48, cropMode: 'fill' })} 
+                            src={getOptimizedImageUrl(img, { width: 400, cropMode: 'limit' })} 
                             alt={`Review Thumbnail ${index + 1}`} 
                             width={48}
                             height={48}
@@ -756,14 +799,14 @@ export default function ProductDetails() {
                   onClick={() => navigate(`/products/${p.slug}`)}
                   className="group bg-cream-bg border border-light-beige rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-500 cursor-pointer flex flex-col h-full"
                 >
-                  <div className="relative aspect-square w-full overflow-hidden bg-light-beige shrink-0">
+                  <div className="relative aspect-square w-full overflow-hidden bg-transparent shrink-0 flex items-center justify-center">
                     <img 
-                      src={getOptimizedImageUrl(p.image || p.images?.[0]?.url, { width: 400, height: 400, cropMode: 'fill' })} 
+                      src={getOptimizedImageUrl(p.image || p.images?.[0]?.url, { width: 400, height: 400, cropMode: 'fit' })} 
                       alt={p.name} 
                       width={400}
                       height={400}
                       loading="lazy"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+                      className="w-full h-full object-contain p-3.5 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.12)] group-hover:scale-105 transition-all duration-700" 
                     />
                     <span className="absolute bottom-4 left-4 bg-cream-bg/95 backdrop-blur-sm border border-light-beige text-dark-olive font-sans text-[8px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-md">
                       {(p.categories && p.categories.length > 0) ? p.categories[0].name : (p.category?.name || 'Vedic')}
@@ -871,6 +914,32 @@ export default function ProductDetails() {
           </div>
         </div>
       )}
+      {/* Mobile Sticky Bottom Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-light-beige p-3 flex gap-3 z-40 lg:hidden shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
+        <button
+          onClick={handleAddToCart}
+          disabled={isOutOfStock || isAdding}
+          className={`flex-1 flex items-center justify-center gap-2 font-sans text-xs font-bold uppercase tracking-wider py-3 rounded-xl transition-all duration-300 ${
+            isOutOfStock || isAdding
+              ? 'bg-stone-100 border border-stone-200 text-stone-455'
+              : 'border border-primary-green text-primary-green bg-cream-bg active:bg-primary-green/5'
+          }`}
+        >
+          <FiShoppingBag />
+          <span>{isOutOfStock ? 'Sold Out' : isAdding ? 'Adding...' : 'Add to Basket'}</span>
+        </button>
+        <button
+          onClick={handleBuyNow}
+          disabled={isOutOfStock || isProcessing}
+          className={`flex-grow flex items-center justify-center font-sans text-xs font-bold uppercase tracking-wider py-3 rounded-xl transition-all duration-305 ${
+            isOutOfStock || isProcessing
+              ? 'bg-stone-300 text-stone-455'
+              : 'bg-primary-green text-white active:bg-dark-olive'
+          }`}
+        >
+          <span>{isOutOfStock ? 'Out of Stock' : isProcessing ? 'Processing...' : 'Buy Now'}</span>
+        </button>
+      </div>
       </div>
     </Profiler>
   );

@@ -1,18 +1,18 @@
 import React, { useState, useEffect, Profiler } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  FiArrowRight, 
-  FiHeart, 
-  FiStar, 
-  FiShoppingBag, 
-  FiCheckCircle, 
-  FiChevronRight, 
-  FiMapPin, 
-  FiLock, 
-  FiX, 
-  FiTrendingUp, 
-  FiActivity, 
+import {
+  FiArrowRight,
+  FiHeart,
+  FiStar,
+  FiShoppingBag,
+  FiCheckCircle,
+  FiChevronRight,
+  FiMapPin,
+  FiLock,
+  FiX,
+  FiTrendingUp,
+  FiActivity,
   FiCpu,
   FiShoppingBag as CartIcon
 } from 'react-icons/fi';
@@ -23,7 +23,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import api from '../utils/api';
 import ProductCard from '../components/ProductCard';
-import { getOptimizedImageUrl } from '../utils/imageOptimizer';
+import { getOptimizedImageUrl, getImageSrcSet } from '../utils/imageOptimizer';
 
 // Module cache for Stale-While-Revalidate loading
 let homepageCache = null;
@@ -34,20 +34,33 @@ const getCloudinaryCroppedUrl = (url, crop, options = {}) => {
 
 export function HeroSkeleton() {
   return (
-    <div className="w-full bg-gradient-to-b from-[#F9F6F0] via-[#F6F3ED] to-[#EAE4D8]/20 py-12 md:py-24 px-6 md:px-12 animate-pulse border-b border-[#EAE4D8]">
-      <div className="max-w-7xl mx-auto grid grid-cols-12 gap-8 items-center">
-        <div className="col-span-12 lg:col-span-7 space-y-6">
-          <div className="h-6 w-48 bg-stone-200 rounded-full" />
-          <div className="h-12 w-3/4 bg-stone-300 rounded-xl" />
-          <div className="h-12 w-1/2 bg-stone-300 rounded-xl" />
-          <div className="h-20 w-5/6 bg-stone-200 rounded-xl" />
-          <div className="flex gap-4">
-            <div className="h-12 w-36 bg-stone-300 rounded-xl" />
-            <div className="h-12 w-44 bg-stone-200 rounded-xl" />
+    <div className="w-full bg-[#FAF8F5] py-6 md:py-8 lg:py-10 px-6 md:px-12 lg:px-20 animate-pulse border-b border-[#EAE4D8]/50">
+      <div className="max-w-7xl mx-auto grid grid-cols-12 gap-6 items-center">
+        {/* Left Column (35%) */}
+        <div className="col-span-12 md:col-span-4 lg:col-span-4 space-y-4">
+          <div className="h-5 w-32 bg-stone-200 rounded-full" />
+          <div className="space-y-2">
+            <div className="h-8 w-full bg-stone-300 rounded-xl" />
+            <div className="h-8 w-5/6 bg-stone-300 rounded-xl" />
+          </div>
+          <div className="h-12 w-full bg-stone-200 rounded-xl" />
+          <div className="flex gap-3">
+            <div className="h-10 w-28 bg-stone-300 rounded-lg" />
+            <div className="h-10 w-28 bg-stone-200 rounded-lg" />
           </div>
         </div>
-        <div className="col-span-12 lg:col-span-5 flex justify-center">
-          <div className="w-full h-80 bg-stone-300 rounded-[36px]" />
+
+        {/* Right Column (65%) */}
+        <div className="col-span-12 md:col-span-8 lg:col-span-8 flex justify-center items-center relative min-h-[340px] sm:min-h-[380px] lg:min-h-[420px]">
+          <div className="absolute bottom-4 w-3/4 h-[60px] rounded-full bg-stone-200/50" />
+          <div className="w-40 h-56 sm:w-52 sm:h-72 lg:w-60 lg:h-80 bg-stone-300 rounded-2xl z-10" />
+        </div>
+
+        {/* Product selector strip (col-span-12) */}
+        <div className="col-span-12 mt-6 flex justify-center gap-3">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="w-20 h-12 bg-stone-200 rounded-xl" />
+          ))}
         </div>
       </div>
     </div>
@@ -171,7 +184,10 @@ export function HomepageSkeleton() {
 
 export default function Home() {
   const navigate = useNavigate();
-  
+
+  // State for the selected premium range item (0: Moringa, 1: Mint, 2: Amla, 3: Banana, 4: Beetroot)
+  const [selectedProductIndex, setSelectedProductIndex] = useState(0);
+
   // Global stores
   const { addItem } = useCartStore();
   const { wishlistItems, toggleWishlist, fetchWishlist } = useWishlistStore();
@@ -194,30 +210,55 @@ export default function Home() {
   const [categoriesLoaded, setCategoriesLoaded] = useState(!!homepageCache);
   const [apiError, setApiError] = useState(false);
   const settingsLoaded = useSettingsStore((state) => state.settingsLoaded);
+  const settings = useSettingsStore((state) => state.settings);
   const [hasHydrated, setHasHydrated] = useState(false);
 
   const [toast, setToast] = useState({ show: false, message: '' });
   const [activeCategory, setActiveCategory] = useState({ id: 'All', name: 'All' });
   const [activeBenefit, setActiveBenefit] = useState('All');
-  
+
+  const promoCategories = homepageCollections.filter(c => {
+    if (c.description && c.description.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(c.description);
+        return !!parsed.isPromoCategory;
+      } catch (e) { }
+    }
+    return false;
+  });
+
+  const signatureCollections = homepageCollections.filter(c => {
+    if (c.description && c.description.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(c.description);
+        return !parsed.isPromoCategory;
+      } catch (e) { }
+    }
+    return true;
+  });
+
   useEffect(() => {
     setHasHydrated(true);
   }, []);
 
-  // Carousel slider states
-  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  // Carousel slider states (controls selectedProductIndex dynamically)
   const [slideDirection, setSlideDirection] = useState(1); // 1 = forward, -1 = backward
 
+  const getActiveSlidesCount = () => {
+    const activeCount = heroesList.filter(h => h.isActive).length;
+    return activeCount > 0 ? activeCount : 5;
+  };
+
   const nextSlide = () => {
-    if (heroesList.length <= 1) return;
     setSlideDirection(1);
-    setCurrentSlideIndex((prev) => (prev + 1) % heroesList.length);
+    const count = getActiveSlidesCount();
+    setSelectedProductIndex((prev) => (prev + 1) % count);
   };
 
   const prevSlide = () => {
-    if (heroesList.length <= 1) return;
     setSlideDirection(-1);
-    setCurrentSlideIndex((prev) => (prev - 1 + heroesList.length) % heroesList.length);
+    const count = getActiveSlidesCount();
+    setSelectedProductIndex((prev) => (prev - 1 + count) % count);
   };
 
   const handleDragEnd = (event, info) => {
@@ -232,7 +273,6 @@ export default function Home() {
   // Keyboard navigation listener
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (heroesList.length <= 1) return;
       const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
       if (activeTag === 'input' || activeTag === 'textarea') return;
 
@@ -244,18 +284,26 @@ export default function Home() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [heroesList, currentSlideIndex]);
+  }, [selectedProductIndex]);
 
   // Auto rotation timer effect
   useEffect(() => {
-    if (!sliderAutoRotate || heroesList.length <= 1) return;
+    if (!sliderAutoRotate) return;
 
     const timer = setInterval(() => {
       nextSlide();
     }, sliderDuration * 1000);
 
     return () => clearInterval(timer);
-  }, [sliderAutoRotate, heroesList, sliderDuration, currentSlideIndex]);
+  }, [sliderAutoRotate, sliderDuration, selectedProductIndex]);
+
+  // Adjust active slide index if list shrinks
+  useEffect(() => {
+    const count = heroesList.filter(h => h.isActive).length;
+    if (count > 0 && selectedProductIndex >= count) {
+      setSelectedProductIndex(0);
+    }
+  }, [heroesList]);
 
   const loadHomepageData = async () => {
     // If not cached, set loading state to true
@@ -275,16 +323,16 @@ export default function Home() {
 
       const cartPromise = isAuthenticated
         ? useCartStore.getState().fetchCart().catch(err => {
-            console.error("Failed to fetch cart:", err);
-            return null;
-          })
+          console.error("Failed to fetch cart:", err);
+          return null;
+        })
         : Promise.resolve();
 
       const wishlistPromise = isAuthenticated
         ? useWishlistStore.getState().fetchWishlist().catch(err => {
-            console.error("Failed to fetch wishlist:", err);
-            return null;
-          })
+          console.error("Failed to fetch wishlist:", err);
+          return null;
+        })
         : Promise.resolve();
 
       const testimonialsPromise = api.get('/public/testimonials')
@@ -384,7 +432,7 @@ export default function Home() {
         }
         if (cmsRes.collections && cmsRes.collections.length > 0) freshCollections = cmsRes.collections;
         if (cmsRes.sectionOrder) {
-          freshOrder = cmsRes.sectionOrder.split(',').filter(s => s !== 'reviews');
+          freshOrder = cmsRes.sectionOrder.split(',');
         }
 
         setActiveCampaign(freshCampaign);
@@ -444,7 +492,7 @@ export default function Home() {
 
   const handleAddToCart = async (product) => {
     const hasVariants = product.variants && product.variants.length > 0;
-    const sizesCount = hasVariants 
+    const sizesCount = hasVariants
       ? product.variants.length + (product.variants.some(v => v.name.toLowerCase().replace(/\s+/g, '') === product.weight?.toLowerCase().replace(/\s+/g, '')) ? 0 : 1)
       : 1;
 
@@ -504,8 +552,8 @@ export default function Home() {
 
 
   const selectCategoryByName = (name) => {
-    const found = homepageCategories.find(c => 
-      c.name.toLowerCase().includes(name.toLowerCase()) || 
+    const found = homepageCategories.find(c =>
+      c.name.toLowerCase().includes(name.toLowerCase()) ||
       name.toLowerCase().includes(c.name.toLowerCase()) ||
       c.slug.toLowerCase().includes(name.toLowerCase())
     );
@@ -517,8 +565,8 @@ export default function Home() {
   };
 
   const getCategorySlugByName = (name) => {
-    const found = homepageCategories.find(c => 
-      c.name.toLowerCase().includes(name.toLowerCase()) || 
+    const found = homepageCategories.find(c =>
+      c.name.toLowerCase().includes(name.toLowerCase()) ||
       name.toLowerCase().includes(c.name.toLowerCase()) ||
       c.slug.toLowerCase().includes(name.toLowerCase())
     );
@@ -538,13 +586,9 @@ export default function Home() {
       productCount: c._count?.products || 0
     }));
 
-    if (categoriesToShow.length === 0) {
-      if (isLoadingCategoryData) {
-        return <CategoriesSkeleton />;
-      }
-      return null;
+    if (isLoadingCategoryData) {
+      return <CategoriesSkeleton />;
     }
-
 
     const containerVariants = {
       hidden: { opacity: 0 },
@@ -558,8 +602,8 @@ export default function Home() {
     };
 
     const itemVariants = {
-      hidden: { 
-        opacity: 0, 
+      hidden: {
+        opacity: 0,
         y: 20
       },
       visible: {
@@ -572,527 +616,872 @@ export default function Home() {
       }
     };
 
+    if (promoCategories.length > 0) {
+      return (
+        <section
+          key="categories"
+          className="bg-gradient-to-b from-[#FDFBF7] via-[#FDFBF7] to-[#F5F2EA] border-b border-[#EAE4D8]/80 py-16 md:py-24 select-none shadow-[inset_0_-2px_10px_rgba(0,0,0,0.01)]"
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-12">
+            {/* Section Header */}
+            <div className="text-center max-w-xl mx-auto space-y-4 mb-16">
+              <span className="text-xs font-bold uppercase tracking-widest text-[#C68A2B] bg-[#C68A2B]/10 px-3.5 py-1 rounded-full inline-block">
+                {settings.homepage_section_badge_categories || "Organic Harvest"}
+              </span>
+              <h2 className="font-serif text-3xl md:text-5xl font-semibold text-[#2F3B0C]">
+                {settings.homepage_section_title_categories || "Shop By Category"}
+              </h2>
+              <p className="text-xs md:text-sm text-stone-500 leading-relaxed font-medium">
+                {settings.homepage_section_subtitle_categories || "Explore our carefully curated farm-fresh collections."}
+              </p>
+            </div>
+
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, margin: "-50px" }}
+              className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-8"
+            >
+              {promoCategories.map((item) => {
+                let meta = {
+                  subtitle: item.badge || '',
+                  mobileImage: '',
+                  overlayPosition: 'bottom-left',
+                  overlayDarkness: 0.5,
+                  textColorTheme: 'light',
+                  isFeatured: false,
+                  imageFocalPoint: 'center',
+                  hoverZoom: true,
+                  ctaStyle: 'arrow',
+                  cornerRadius: '3xl'
+                };
+                if (item.description && item.description.startsWith('{')) {
+                  try { meta = { ...meta, ...JSON.parse(item.description) }; } catch (e) { }
+                }
+
+                const isDark = meta.textColorTheme === 'dark';
+                const dark = meta.overlayDarkness !== undefined ? parseFloat(meta.overlayDarkness) : 0.5;
+                const overlay = isDark
+                  ? `linear-gradient(to top, rgba(253,251,247,${dark}) 0%, rgba(253,251,247,${dark * 0.3}) 60%, transparent 100%)`
+                  : `linear-gradient(to top, rgba(0,0,0,${dark}) 0%, rgba(0,0,0,${dark * 0.3}) 60%, transparent 100%)`;
+
+                let alignClass = 'justify-end items-start text-left';
+                if (meta.overlayPosition === 'center') alignClass = 'justify-center items-center text-center';
+                else if (meta.overlayPosition === 'top-left') alignClass = 'justify-start items-start text-left';
+                else if (meta.overlayPosition === 'top-right') alignClass = 'justify-start items-end text-right';
+                else if (meta.overlayPosition === 'bottom-right') alignClass = 'justify-end items-end text-right';
+
+                let roundClass = 'rounded-[24px] md:rounded-[32px]';
+                if (meta.cornerRadius === 'none') roundClass = 'rounded-none';
+                else if (meta.cornerRadius === 'md') roundClass = 'rounded-md';
+                else if (meta.cornerRadius === 'lg') roundClass = 'rounded-lg';
+                else if (meta.cornerRadius === 'xl') roundClass = 'rounded-xl';
+                else if (meta.cornerRadius === 'full') roundClass = 'rounded-[32px] md:rounded-[40px]';
+
+                let objectFocal = 'object-center';
+                if (meta.imageFocalPoint === 'top') objectFocal = 'object-top';
+                else if (meta.imageFocalPoint === 'bottom') objectFocal = 'object-bottom';
+                else if (meta.imageFocalPoint === 'left') objectFocal = 'object-left';
+                else if (meta.imageFocalPoint === 'right') objectFocal = 'object-right';
+
+                const spanClass = meta.isFeatured
+                  ? 'col-span-2 sm:col-span-2 lg:col-span-2 h-[160px] sm:h-[220px] md:h-[320px]'
+                  : 'col-span-1 h-[160px] sm:h-[220px] md:h-[320px]';
+
+                const hoverZoomClass = meta.hoverZoom ? 'group-hover:scale-105' : '';
+
+                return (
+                  <motion.div
+                    key={item.id}
+                    variants={itemVariants}
+                    onClick={() => navigate(`/category/${item.categorySlug}`)}
+                    className={`relative overflow-hidden group shadow-sm border border-[#EAE4D8] transition-all duration-500 cursor-pointer ${spanClass} ${roundClass}`}
+                  >
+                    <img
+                      src={item.image}
+                      srcSet={getImageSrcSet(item.image, { widths: [400, 800, 1500], cropMode: 'fill' })}
+                      sizes={meta.isFeatured ? "(max-width: 640px) 100vw, 66vw" : "(max-width: 640px) 100vw, 33vw"}
+                      alt={item.title}
+                      loading="lazy"
+                      className={`absolute inset-0 w-full h-full object-cover transition duration-700 ease-out ${hoverZoomClass} ${objectFocal}`}
+                    />
+                    <div className="absolute inset-0 z-10 pointer-events-none" style={{ background: overlay }} />
+                    <div className={`absolute inset-0 z-20 flex flex-col p-6 md:p-8 ${alignClass}`} style={{ color: isDark ? '#2F3B0C' : '#fff' }}>
+
+                      {meta.subtitle && (
+                        <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full inline-block w-fit mb-2 ${isDark ? 'bg-[#2F3B0C]/10 text-[#2F3B0C]' : 'bg-white/20 text-white backdrop-blur-xs'
+                          }`}>
+                          {meta.subtitle}
+                        </span>
+                      )}
+
+                      <h3 className={`font-serif text-lg sm:text-xl md:text-2xl font-bold leading-tight max-w-[90%] ${isDark ? 'text-[#2F3B0C]' : 'text-white'}`}>{item.title}</h3>
+
+                      {item.ctaStyle === 'arrow' ? (
+                        <div className={`absolute bottom-6 right-6 w-8 h-8 rounded-full flex items-center justify-center text-sm transition duration-300 ${isDark ? 'bg-[#2F3B0C]/10 text-[#2F3B0C] group-hover:bg-[#2F3B0C] group-hover:text-white' : 'bg-white/10 text-white backdrop-blur-xs group-hover:bg-white group-hover:text-[#2F3B0C]'
+                          }`}>
+                          →
+                        </div>
+                      ) : item.ctaStyle === 'button-outline' ? (
+                        <div className={`mt-3 text-[10px] font-bold uppercase tracking-wider px-3 py-1 border rounded select-none ${isDark ? 'border-[#2F3B0C] text-[#2F3B0C]' : 'border-white text-white'
+                          }`}>
+                          {item.ctaText || 'Explore'}
+                        </div>
+                      ) : (
+                        <div className="mt-3 text-[10px] font-bold uppercase tracking-wider px-3.5 py-1.5 rounded select-none shadow-sm" style={{ background: isDark ? '#4E641A' : '#fff', color: isDark ? '#fff' : '#2F3B0C' }}>
+                          {item.ctaText || 'Explore'}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          </div>
+        </section>
+      );
+    }
+
+    if (categoriesToShow.length === 0) {
+      return null;
+    }
+
+    // Default Fallback
     return (
-      <section 
-        key="categories" 
+      <section
+        key="categories"
         className="bg-gradient-to-b from-[#FDFBF7] via-[#FDFBF7] to-[#F5F2EA] border-b border-[#EAE4D8]/80 py-16 md:py-24 select-none shadow-[inset_0_-2px_10px_rgba(0,0,0,0.01)]"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-12">
           {/* Section Header */}
           <div className="text-center max-w-xl mx-auto space-y-4 mb-16">
             <span className="text-xs font-bold uppercase tracking-widest text-[#C68A2B] bg-[#C68A2B]/10 px-3.5 py-1 rounded-full inline-block">
-              Organic Harvest
+              {settings.homepage_section_badge_categories || "Organic Harvest"}
             </span>
             <h2 className="font-serif text-3xl md:text-5xl font-semibold text-[#2F3B0C]">
-              Shop By Category
+              {settings.homepage_section_title_categories || "Shop By Category"}
             </h2>
             <p className="text-xs md:text-sm text-stone-500 leading-relaxed font-medium">
-              Explore our carefully curated farm-fresh collections.
+              {settings.homepage_section_subtitle_categories || "Explore our carefully curated farm-fresh collections."}
             </p>
           </div>
 
-          {/* Cards Grid */}
-          {isLoadingCategoryData ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8 pointer-events-none">
-              {[...Array(8)].map((_, i) => (
-                <div 
-                  key={`skeleton-${i}`} 
-                  className="bg-stone-200/60 animate-pulse h-64 sm:h-80 rounded-[24px] pointer-events-none" 
-                />
-              ))}
-            </div>
-          ) : (
-            categoriesToShow && categoriesToShow.length > 0 && (
-              <motion.div 
-                variants={containerVariants}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, margin: "-50px" }}
-                className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8"
-              >
-                {categoriesToShow.map((cat) => {
-                  if (!cat || !cat.slug || !cat.name) return null;
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-50px" }}
+            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8"
+          >
+            {categoriesToShow.map((cat) => {
+              if (!cat || !cat.slug || !cat.name) return null;
 
-                  const optimizedImageUrl = getOptimizedImageUrl(cat.image, { width: 400, height: 300, cropMode: 'fill' });
+              const optimizedImageUrl = getOptimizedImageUrl(cat.image, { width: 400, height: 300, cropMode: 'fill' });
 
-                  return (
-                    <motion.div 
-                      key={cat.id || cat.slug} 
-                      variants={itemVariants}
-                      className="group bg-white border border-[#EAE4D8] rounded-[24px] overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between h-full cursor-pointer relative w-full text-left"
-                      onClick={() => navigate(`/category/${cat.slug}`)}
-                    >
-                      {/* Category Thumbnail Image with fixed 4:3 aspect ratio */}
-                      <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#F8F5F0] border-b border-[#EAE4D8]/40 shrink-0">
-                        {cat.image ? (
-                          <img 
-                            src={optimizedImageUrl} 
-                            alt={cat.name} 
-                            width={400}
-                            height={300}
-                            loading="lazy"
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-[#EDE7D9]/80 to-[#FDFBF7] flex items-center justify-center font-serif text-stone-400">
-                            No Image
-                          </div>
-                        )}
+              return (
+                <motion.div
+                  key={cat.id || cat.slug}
+                  variants={itemVariants}
+                  className="group bg-white border border-[#EAE4D8] rounded-[24px] overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-between h-full cursor-pointer relative w-full text-left"
+                  onClick={() => navigate(`/category/${cat.slug}`)}
+                >
+                  <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#F8F5F0] border-b border-[#EAE4D8]/40 shrink-0">
+                    {cat.image ? (
+                      <img
+                        src={optimizedImageUrl}
+                        srcSet={getImageSrcSet(cat.image, { widths: [400, 800], cropMode: 'fill' })}
+                        sizes="(max-width: 640px) 50vw, 25vw"
+                        alt={cat.name}
+                        width={400}
+                        height={300}
+                        loading="lazy"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-[#EDE7D9]/80 to-[#FDFBF7] flex items-center justify-center font-serif text-stone-400">
+                        No Image
                       </div>
+                    )}
+                  </div>
 
-                      {/* Card Content - Aligned below the image */}
-                      <div className="p-4 flex flex-col justify-between flex-grow gap-3">
-                        <div className="space-y-0.5">
-                          <h3 className="font-serif text-sm sm:text-base md:text-lg font-bold text-[#2F3B0C] group-hover:text-[#4E641A] transition-colors leading-tight line-clamp-1">
-                            {cat.name}
-                          </h3>
-                          <span className="font-sans text-[10px] sm:text-xs font-semibold text-stone-400 block">
-                            {cat.productCount} {cat.productCount === 1 ? 'Staple' : 'Staples'}
-                          </span>
-                        </div>
+                  <div className="p-4 flex flex-col justify-between flex-grow gap-3">
+                    <div className="space-y-0.5">
+                      <h3 className="font-serif text-sm sm:text-base md:text-lg font-bold text-[#2F3B0C] group-hover:text-[#4E641A] transition-colors leading-tight line-clamp-1">
+                        {cat.name}
+                      </h3>
+                      <span className="font-sans text-[10px] sm:text-xs font-semibold text-stone-400 block">
+                        {cat.productCount} {cat.productCount === 1 ? 'Staple' : 'Staples'}
+                      </span>
+                    </div>
 
-                        {/* CTA Row - Identical position across all cards */}
-                        <div className="pt-2 border-t border-stone-100 flex items-center justify-between mt-auto">
-                          <span className="font-sans text-[9px] sm:text-xs font-bold text-[#4E641A] group-hover:text-[#2F3B0C] uppercase tracking-widest transition-colors">
-                            Explore
-                          </span>
-                          <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-[#4E641A]/10 text-[#4E641A] group-hover:bg-[#4E641A] group-hover:text-white flex items-center justify-center transition-all duration-300">
-                            <FiArrowRight className="w-3 h-3 sm:w-4 sm:h-4 group-hover:translate-x-0.5 transition-transform" />
-                          </div>
-                        </div>
+                    <div className="pt-2 border-t border-stone-100 flex items-center justify-between mt-auto">
+                      <span className="font-sans text-[9px] sm:text-xs font-bold text-[#4E641A] group-hover:text-[#2F3B0C] uppercase tracking-widest transition-colors">
+                        Explore
+                      </span>
+                      <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-[#4E641A]/10 text-[#4E641A] group-hover:bg-[#4E641A] group-hover:text-white flex items-center justify-center transition-all duration-300">
+                        <FiArrowRight className="w-3 h-3 sm:w-4 sm:h-4 group-hover:translate-x-0.5 transition-transform" />
                       </div>
-                    </motion.div>
-                  );
-                })}
-              </motion.div>
-            )
-          )}
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </motion.div>
         </div>
       </section>
     );
   };
 
   const renderHeroSection = () => {
-    const currentHero = heroesList[currentSlideIndex] || activeHero;
-    const hasHero = !!currentHero;
+    const sortedHeroes = [...heroesList]
+      .filter(h => h.isActive)
+      .sort((a, b) => (a.slideOrder || 0) - (b.slideOrder || 0));
 
-    if (!hasHero) {
-      if (isLoading) {
-        return <HeroSkeleton />;
-      }
-      return null;
+    // Resolve index safely
+    const activeHeroIndex = selectedProductIndex < sortedHeroes.length ? selectedProductIndex : 0;
+    const activeHero = sortedHeroes[activeHeroIndex] || null;
+
+    const matchedHero = activeHero;
+
+    const resolvedFeaturedProduct = activeHero?.featuredProduct || (activeHero?.featuredProductId ? productsList.find(p => p.id === activeHero.featuredProductId) : null);
+
+    const activeProduct = resolvedFeaturedProduct;
+
+    // Resolve content dynamically: Use CMS values if matched, otherwise defaults
+    const headingLine1 = activeHero?.headingLine1 || "Pristine Organic Staples";
+    const headingHighlight = activeHero?.headingHighlight || "100% Pure & Natural";
+    const headingLine2 = activeHero?.headingLine2 || "Daily Superfood Nourishment";
+    const description = activeHero?.description || activeProduct?.description || "Carefully processed to preserve natural vitamins, minerals, and enzymes.";
+
+    const primaryButtonText = activeHero?.primaryButtonText || 'SHOP NOW';
+    const primaryButtonLink = activeHero?.primaryButtonLink || '/';
+    const secondaryButtonText = activeHero?.secondaryButtonText || 'EXPLORE PRODUCTS';
+    const secondaryButtonLink = activeHero?.secondaryButtonLink || '/';
+
+    const bulletOne = activeHero?.bulletOne || "Chemical Free";
+    const bulletTwo = activeHero?.bulletTwo || "Farm Fresh";
+    const bulletThree = activeHero?.bulletThree || "Traditional Nutrition";
+    const bulletFour = activeHero?.bulletFour || "";
+
+    // Use custom CMS saved showcase image if available, else active product image
+    const packetImage = activeHero?.showcaseImage || activeHero?.heroImage || activeProduct?.image || activeProduct?.images?.[0]?.url || "";
+
+    const desktopHeroImageUrl = packetImage ? getCloudinaryCroppedUrl(packetImage, activeHero || {}, { width: 2000, cropMode: 'limit' }) : '';
+
+    if (isLoading && sortedHeroes.length === 0) {
+      return <HeroSkeleton />;
     }
 
-    const title = currentHero.headingLine1 || '';
-    const highlight = currentHero.headingHighlight || '';
-    const titleLine2 = currentHero.headingLine2 || '';
-    const description = currentHero.description || '';
-    const primaryButtonText = currentHero.primaryButtonText || 'Shop Now';
-    const primaryButtonLink = currentHero.primaryButtonLink || '/';
-    const secondaryButtonText = currentHero.secondaryButtonText || 'Explore Collections';
-    const secondaryButtonLink = currentHero.secondaryButtonLink || '/';
-    const badgeText = currentHero.trustBadgeText || '';
-    const promoCodeText = currentHero.promoText || '';
-
-    // Bullets list
-    const bulletOne = currentHero.bulletOne || '';
-    const bulletTwo = currentHero.bulletTwo || '';
-    const bulletThree = currentHero.bulletThree || '';
-    const bulletFour = currentHero.bulletFour || '';
-
-    // Featured Product Reference
-    const featuredProduct = currentHero.featuredProduct || productsList.find(p => p.isFeatured) || null;
-    const hasFeaturedProduct = !!featuredProduct;
-
-    const featuredProductName = hasFeaturedProduct ? featuredProduct.name : '';
-    const featuredProductPrice = hasFeaturedProduct ? featuredProduct.price : 0;
-    const featuredProductOriginalPrice = hasFeaturedProduct ? (featuredProduct.compareAtPrice || featuredProduct.originalPrice || featuredProduct.mrp || 0) : 0;
-    const featuredProductImage = hasFeaturedProduct 
-      ? (featuredProduct.images?.length > 0 ? featuredProduct.images[0].url : featuredProduct.image) 
-      : null;
-
-    // Use currentHero.heroImage as primary, fallback to featured product image
-    const heroImage = currentHero.heroImage || featuredProductImage || '';
-
-    const desktopHeroImageUrl = heroImage ? getCloudinaryCroppedUrl(heroImage, currentHero, { width: 500, height: 333, cropMode: 'fill' }) : '';
-    const tabletHeroImageUrl = heroImage ? getCloudinaryCroppedUrl(heroImage, currentHero, { width: 400, height: 266, cropMode: 'fill' }) : '';
-    const mobileHeroImageUrl = heroImage ? getCloudinaryCroppedUrl(heroImage, currentHero, { width: 300, height: 165, cropMode: 'fill' }) : '';
-
-    // Right card badges
-    const offerBadgeText = currentHero.offerBadgeText || '';
-    const floatingBadgeTitle = currentHero.floatingBadgeTitle || '';
-    const floatingBadgeSubtitle = currentHero.floatingBadgeSubtitle || '';
-
+    const trustBadgeText = activeHero
+      ? activeHero.trustBadgeText?.trim()
+      : "🌿 100% Natural & Chemical Free";
 
     const handleFeaturedProductAction = () => {
-      if (hasFeaturedProduct) {
-        const prod = {
-          id: featuredProduct.id,
-          name: featuredProduct.name,
-          price: featuredProduct.price,
-          originalPrice: featuredProductOriginalPrice,
-          weight: featuredProduct.weight,
-          image: featuredProductImage || heroImage,
-          tag: 'Featured',
-          description: featuredProduct.description,
-          category: 'Featured'
-        };
-        handleAddToCart(prod);
-      } else {
-        const firstProd = productsList[0];
-        if (firstProd) {
-          handleAddToCart(firstProd);
-        }
+      const targetProduct = resolvedFeaturedProduct;
+      if (targetProduct) {
+        handleAddToCart(targetProduct);
       }
     };
 
-    // Stagger animation variants for text lines inside slides
-    const containerVariants = {
-      hidden: { opacity: 0 },
-      visible: {
-        opacity: 1,
-        transition: {
-          staggerChildren: 0.08,
-          delayChildren: 0.1
-        }
-      }
+    const getIngredientKey = (hero) => {
+      if (!hero) return '';
+      const text = `${hero.headingLine1} ${hero.headingLine2} ${hero.featuredProduct?.name || ''} ${hero.featuredProduct?.slug || ''}`.toLowerCase();
+      if (text.includes('moringa')) return 'moringa';
+      if (text.includes('mint')) return 'mint';
+      if (text.includes('amla')) return 'amla';
+      if (text.includes('banana')) return 'banana';
+      if (text.includes('beet')) return 'beetroot';
+      return '';
     };
 
-    const textItemVariants = {
-      hidden: { opacity: 0, y: 15 },
-      visible: {
-        opacity: 1,
-        y: 0,
-        transition: {
-          duration: 0.5,
-          ease: [0.215, 0.61, 0.355, 1] // easeOutCubic
-        }
+    // Bullets icons mapping
+    const getBulletIcon = (title) => {
+      const lower = title.toLowerCase();
+      if (lower.includes('chemical') || lower.includes('pure')) {
+        return (
+          <svg className="w-4.5 h-4.5 text-[#4E641A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        );
       }
+      if (lower.includes('farm') || lower.includes('fresh') || lower.includes('direct')) {
+        return (
+          <svg className="w-4.5 h-4.5 text-[#4E641A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m11.314 11.314l.707-.707M12 5a7 7 0 100 14 7 7 0 000-14z" />
+          </svg>
+        );
+      }
+      return (
+        <svg className="w-4.5 h-4.5 text-[#4E641A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+        </svg>
+      );
     };
 
-    const rightCardVariants = {
-      hidden: { opacity: 0, scale: 0.96, y: 20 },
-      visible: {
-        opacity: 1,
-        scale: 1,
-        y: 0,
-        transition: {
-          duration: 0.6,
-          ease: [0.215, 0.61, 0.355, 1],
-          delay: 0.25
-        }
+    const getBulletDescription = (title) => {
+      const lower = title.toLowerCase();
+      if (lower.includes('chemical') || lower.includes('pure')) {
+        return "No chemicals or harmful additives";
       }
+      if (lower.includes('farm') || lower.includes('fresh') || lower.includes('direct')) {
+        return "Directly sourced from our farms";
+      }
+      return "100% natural superfoods";
     };
 
-    const slideVariants = {
-      enter: (direction) => ({
-        x: direction > 0 ? 50 : -50,
-        opacity: 0
-      }),
-      center: {
-        x: 0,
-        opacity: 1,
-        transition: {
-          x: { type: "spring", stiffness: 300, damping: 30 },
-          opacity: { duration: 0.4 }
-        }
-      },
-      exit: (direction) => ({
-        x: direction < 0 ? 50 : -50,
-        opacity: 0,
-        transition: {
-          x: { type: "spring", stiffness: 300, damping: 30 },
-          opacity: { duration: 0.3 }
-        }
-      })
+    const renderFloatingIngredients = (type) => {
+      switch (type) {
+        case 'moringa':
+          return (
+            <>
+              {/* Green juice glass on the stage right */}
+              <motion.div
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+                className="absolute bottom-8 right-[5%] sm:right-[10%] w-16 h-24 sm:w-20 sm:h-28 z-20 pointer-events-none select-none"
+              >
+                <svg viewBox="0 0 100 120" fill="none" className="w-full h-full drop-shadow-lg">
+                  <path d="M25 10 L75 10 L68 110 L32 110 Z" fill="rgba(255,255,255,0.25)" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
+                  <path d="M27 35 L73 35 L68 108 L32 108 Z" fill="#3D5014" opacity="0.9" />
+                  <ellipse cx="50" cy="35" rx="23" ry="5" fill="#4E641A" />
+                  <line x1="45" y1="5" x2="60" y2="70" stroke="#C68A2B" strokeWidth="4" strokeLinecap="round" />
+                  <path d="M30 15 L33 90" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+              </motion.div>
+              {/* Powder Bowl on the stage left */}
+              <motion.div
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1.5 }}
+                className="absolute bottom-6 left-[10%] sm:left-[15%] w-24 h-16 sm:w-32 sm:h-20 z-20 pointer-events-none select-none"
+              >
+                <svg viewBox="0 0 120 80" fill="none" className="w-full h-full drop-shadow-xl">
+                  <path d="M20 50 Q60 85 100 50 Q100 48 20 48 Z" fill="#6E553A" stroke="#523E28" strokeWidth="1" />
+                  <path d="M20 48 Q60 5 100 48 Z" fill="#4E641A" opacity="0.95" />
+                  <path d="M35 48 Q60 20 85 48 Z" fill="#607D1E" opacity="0.9" />
+                  <path d="M35 60 Q60 75 85 60" stroke="#523E28" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </motion.div>
+            </>
+          );
+        case 'mint':
+          return (
+            <>
+              {/* Powder Bowl left */}
+              <motion.div
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 6, repeat: Infinity, ease: "easeInOut", delay: 0.7 }}
+                className="absolute bottom-6 left-[12%] sm:left-[18%] w-24 h-16 sm:w-28 sm:h-20 z-20 pointer-events-none select-none"
+              >
+                <svg viewBox="0 0 120 80" fill="none" className="w-full h-full drop-shadow-xl">
+                  <path d="M20 50 Q60 85 100 50 Q100 48 20 48 Z" fill="#6E553A" stroke="#523E28" strokeWidth="1" />
+                  <path d="M20 48 Q60 8 100 48 Z" fill="#3B7A57" opacity="0.95" />
+                  <path d="M35 48 Q60 22 85 48 Z" fill="#4B9A6F" opacity="0.9" />
+                </svg>
+              </motion.div>
+            </>
+          );
+        case 'amla':
+          return (
+            <>
+              {/* Amla fruits bottom-right on the stage */}
+              <motion.div
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 1.2 }}
+                className="absolute bottom-6 right-[8%] sm:right-[12%] w-20 h-20 sm:w-24 sm:h-24 z-20 pointer-events-none select-none"
+              >
+                <svg viewBox="0 0 100 100" fill="none" className="w-full h-full drop-shadow-lg">
+                  <circle cx="35" cy="55" r="28" fill="#8A9A5B" opacity="0.95" />
+                  <circle cx="35" cy="55" r="28" fill="url(#amlaGlowDesktop2)" />
+                  <circle cx="65" cy="45" r="20" fill="#7A8A4D" opacity="0.9" />
+                  <circle cx="65" cy="45" r="20" fill="url(#amlaGlowDesktop2)" />
+                  <path d="M45 35 C55 20 70 25 80 15 C70 30 55 25 45 35 Z" fill="#6F7E47" />
+                </svg>
+              </motion.div>
+              {/* Powder Bowl left */}
+              <motion.div
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 6.5, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
+                className="absolute bottom-6 left-[10%] sm:left-[15%] w-24 h-16 sm:w-28 sm:h-20 z-20 pointer-events-none select-none"
+              >
+                <svg viewBox="0 0 120 80" fill="none" className="w-full h-full drop-shadow-xl">
+                  <path d="M20 50 Q60 85 100 50 Q100 48 20 48 Z" fill="#6E553A" stroke="#523E28" strokeWidth="1" />
+                  <path d="M20 48 Q60 10 100 48 Z" fill="#A4B774" opacity="0.95" />
+                  <path d="M35 48 Q60 25 85 48 Z" fill="#B3C485" opacity="0.9" />
+                </svg>
+              </motion.div>
+            </>
+          );
+        case 'banana':
+          return (
+            <>
+              {/* Banana whole on stage right */}
+              <motion.div
+                animate={{ y: [0, -8, 0] }}
+                transition={{ duration: 7.5, repeat: Infinity, ease: "easeInOut", delay: 1.1 }}
+                className="absolute bottom-6 right-[5%] sm:right-[10%] w-28 h-20 sm:w-32 sm:h-24 z-20 pointer-events-none select-none"
+              >
+                <svg viewBox="0 0 120 100" fill="none" className="w-full h-full drop-shadow-lg">
+                  <path d="M10 20 Q55 50 110 25 Q95 70 30 65 Q15 50 10 20 Z" fill="#E2B742" stroke="#B79124" strokeWidth="1.5" />
+                  <path d="M107 24 Q110 25 113 22 L110 18 Z" fill="#4B3A0E" />
+                  <path d="M10 20 Q12 25 8 28 L5 22 Z" fill="#4B3A0E" />
+                </svg>
+              </motion.div>
+              {/* Powder Bowl left */}
+              <motion.div
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 6.2, repeat: Infinity, ease: "easeInOut", delay: 0.6 }}
+                className="absolute bottom-6 left-[10%] sm:left-[15%] w-24 h-16 sm:w-28 sm:h-20 z-20 pointer-events-none select-none"
+              >
+                <svg viewBox="0 0 120 80" fill="none" className="w-full h-full drop-shadow-xl">
+                  <path d="M20 50 Q60 85 100 50 Q100 48 20 48 Z" fill="#6E553A" stroke="#523E28" strokeWidth="1" />
+                  <path d="M20 48 Q60 12 100 48 Z" fill="#F2DFB8" opacity="0.95" />
+                  <path d="M35 48 Q60 26 85 48 Z" fill="#FAF1DF" opacity="0.9" />
+                </svg>
+              </motion.div>
+            </>
+          );
+        case 'beetroot':
+          return (
+            <>
+              {/* Beetroot leaves bottom-right on stage */}
+              <motion.div
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 8.5, repeat: Infinity, ease: "easeInOut", delay: 1.3 }}
+                className="absolute bottom-6 right-[6%] sm:right-[12%] w-24 h-24 sm:w-28 sm:h-28 z-20 pointer-events-none select-none"
+              >
+                <svg viewBox="0 0 100 100" fill="none" className="w-full h-full drop-shadow-lg">
+                  <path d="M10 75 Q40 55 60 25 C50 45 30 65 10 75 Z" fill="#4B6C36" />
+                  <path d="M10 75 L60 25" stroke="#800020" strokeWidth="2" />
+                  <path d="M20 80 Q55 60 85 45 C70 60 45 75 20 80 Z" fill="#3D5C28" />
+                  <path d="M20 80 L85 45" stroke="#800020" strokeWidth="2.5" />
+                </svg>
+              </motion.div>
+              {/* Powder Bowl left */}
+              <motion.div
+                animate={{ y: [0, -5, 0] }}
+                transition={{ duration: 5.8, repeat: Infinity, ease: "easeInOut", delay: 0.8 }}
+                className="absolute bottom-6 left-[10%] sm:left-[15%] w-24 h-16 sm:w-28 sm:h-20 z-20 pointer-events-none select-none"
+              >
+                <svg viewBox="0 0 120 80" fill="none" className="w-full h-full drop-shadow-xl">
+                  <path d="M20 50 Q60 85 100 50 Q100 48 20 48 Z" fill="#6E553A" stroke="#523E28" strokeWidth="1" />
+                  <path d="M20 48 Q60 10 100 48 Z" fill="#800020" opacity="0.95" />
+                  <path d="M35 48 Q60 24 85 48 Z" fill="#A31D3B" opacity="0.9" />
+                </svg>
+              </motion.div>
+            </>
+          );
+        default:
+          return null;
+      }
     };
 
     return (
-      <section 
-        key="hero" 
-        className="home-hero-section relative overflow-hidden py-4 sm:py-12 md:py-24 px-4 sm:px-6 md:px-12 border-b border-[#EAE4D8] bg-gradient-to-b from-[#F9F6F0] via-[#F6F3ED] to-[#EAE4D8]/20 text-left animate-fade-in"
+      <section
+        key="hero"
+        className="home-hero-section relative overflow-hidden pt-20 pb-6 md:pt-32 md:pb-12 lg:pt-36 lg:pb-16 min-h-0 md:min-h-[700px] lg:min-h-[750px] flex items-center px-4 sm:px-6 md:px-12 lg:px-20 border-b border-[#EAE4D8]/50 bg-[#FAF8F5] text-left select-none animate-fade-in"
       >
-        {/* Background blobs with subtle movement */}
-        <motion.div 
-          animate={{
-            x: currentSlideIndex * 20,
-            y: currentSlideIndex * -15,
-          }}
-          transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute top-1/4 left-1/10 w-96 h-96 bg-[#4E641A]/5 rounded-full filter blur-3xl pointer-events-none" 
-        />
-        <motion.div 
-          animate={{
-            x: currentSlideIndex * -20,
-            y: currentSlideIndex * 15,
-          }}
-          transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute bottom-1/4 right-1/10 w-80 h-80 bg-[#C68A2B]/5 rounded-full filter blur-3xl pointer-events-none" 
-        />
+        {/* Soft cream-green blurred background gradients */}
+        <div className="absolute top-0 right-0 w-[450px] h-[450px] bg-[#EAF2DE]/50 rounded-full filter blur-3xl opacity-60 pointer-events-none -z-10" />
+        <div className="absolute bottom-0 left-0 w-[350px] h-[350px] bg-[#F2ECE1]/60 rounded-full filter blur-3xl opacity-50 pointer-events-none -z-10" />
 
-        <div className="max-w-7xl mx-auto relative z-10">
-          <AnimatePresence mode="wait" custom={slideDirection}>
-            <motion.div
-              key={currentSlideIndex}
-              custom={slideDirection}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.2}
-              onDragEnd={handleDragEnd}
-              className="grid grid-cols-12 gap-3 sm:gap-6 lg:gap-12 items-center cursor-grab active:cursor-grabbing select-none"
-            >
-              {/* Left Text */}
-              <motion.div 
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                className="col-span-12 lg:col-span-7 space-y-2 sm:space-y-6 text-left"
+        <div className="max-w-7xl mx-auto relative z-10 w-full">
+
+          {/* Desktop & Tablet Layout (md+) */}
+          <div className="hidden md:grid md:grid-cols-[45%_55%] gap-6 lg:gap-8 items-start w-full">
+
+            {/* Left Content Area (45% width) */}
+            <div className="flex flex-col justify-start space-y-5 lg:space-y-6 -mt-[40px] md:-mt-[60px] lg:-mt-[80px]">
+
+              {/* Badge */}
+              {trustBadgeText ? (
+                <div className="inline-flex items-center space-x-2 bg-[#E8EFE0] border border-[#D5E2C7] px-2.5 py-0.5 rounded-full shadow-sm w-fit">
+                  <span className="text-[9.5px] font-bold uppercase tracking-wider text-[#2F3B0C] flex items-center">
+                    {trustBadgeText}
+                  </span>
+                </div>
+              ) : null}
+
+              {/* Headline (Spacious, less wrapping) */}
+              <h1 className="font-serif text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold tracking-tight text-[#2F3B0C] leading-[1.15] max-w-none">
+                <>
+                  {headingLine1 && <span className="block text-[#2F3B0C]">{headingLine1}</span>}
+                  {headingHighlight && <span className="block text-[#C68A2B] italic font-normal font-serif my-0.5">{headingHighlight}</span>}
+                  {headingLine2 && <span className="block text-[#C68A2B]">{headingLine2}</span>}
+                </>
+              </h1>
+
+              {/* Description (Wider and readable) */}
+              <p className="text-[12px] lg:text-sm text-stone-600 max-w-none leading-relaxed font-medium">
+                {description}
+              </p>
+
+              {/* Benefits Bullet Points */}
+              <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1 pb-1">
+                {[bulletOne, bulletTwo, bulletThree, bulletFour].filter(Boolean).map((bullet, idx) => (
+                  <div key={idx} className="flex items-center space-x-2">
+                    <span className="text-[#4E641A] text-xs font-bold">✓</span>
+                    <span className="font-sans text-[11px] font-bold text-stone-600 uppercase tracking-wider">{bullet}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* CTA Buttons */}
+              <div className="flex flex-row gap-4 pt-1">
+                <button
+                  onClick={handleFeaturedProductAction}
+                  className="group px-4.5 py-2 bg-[#2F3B0C] hover:bg-[#1E2707] text-white text-[10.5px] font-bold uppercase tracking-widest rounded-lg transition-all duration-300 flex items-center justify-center space-x-2 shadow-md hover:shadow-lg cursor-pointer border-none"
+                >
+                  <span>{primaryButtonText}</span>
+                  <FiArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </button>
+                <button
+                  onClick={() => {
+                    document.getElementById('best-sellers-grid')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="px-4.5 py-2 bg-white hover:bg-stone-50 text-[#2F3B0C] border border-[#2F3B0C] text-[10.5px] font-bold uppercase tracking-widest rounded-lg transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer text-center"
+                >
+                  {secondaryButtonText}
+                </button>
+              </div>
+
+              {/* Promo Coupon Bar */}
+              {activeHero?.promoText && (
+                <div className="inline-flex items-center space-x-2 text-[10px] font-bold uppercase text-[#C68A2B] bg-[#C68A2B]/10 py-1.5 px-3 rounded-xl border border-[#C68A2B]/20 w-fit mt-2 select-all">
+                  <span className="bg-[#C68A2B] text-white px-1.5 py-0.5 rounded text-[8px] tracking-wider leading-none">PROMO</span>
+                  <span className="truncate">{activeHero.promoText}</span>
+                </div>
+              )}
+
+            </div>
+
+            {/* Right Showcase Column (55% width) - Centered vertically within container, aligned top in grid */}
+            <div className="relative flex justify-center items-start h-[380px] sm:h-[440px] lg:h-[480px] xl:h-[520px] w-full pt-[44px] lg:pt-[48px] -mt-[40px] md:-mt-[60px] lg:-mt-[80px]">
+
+              {/* Product Presentation Wooden Stage */}
+              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[85%] h-[80px] sm:h-[90px] lg:h-[100px] xl:h-[110px] bg-gradient-to-br from-[#D8C7B3] via-[#C5B39E] to-[#AB9983] rounded-[100%] shadow-[0_15px_30px_rgba(0,0,0,0.15)] border border-[#C5B39E]/60 z-0 flex items-center justify-center overflow-hidden">
+                <div className="w-[95%] h-[95%] rounded-[100%] border border-[#FAF8F5]/10 absolute" />
+                <div className="w-[85%] h-[85%] rounded-[100%] border border-[#FAF8F5]/15 absolute" />
+                <div className="w-[70%] h-[70%] rounded-[100%] border border-[#FAF8F5]/20 absolute" />
+              </div>
+
+              {/* Dynamic Floating Ingredients */}
+              {renderFloatingIngredients(getIngredientKey(activeHero))}
+
+              {/* Main Product Packet (Dominates layout, centered vertically, 70-80% height of showcase) */}
+              <motion.div
+                key={selectedProductIndex}
+                initial={{ opacity: 0, scale: 0.92, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: -15 }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+                className="relative z-10 w-fit filter drop-shadow-[0_25px_35px_rgba(0,0,0,0.22)] hover:drop-shadow-[0_30px_45px_rgba(0,0,0,0.28)] transition-all duration-500 flex items-center justify-center"
               >
-                {badgeText && (
-                  <motion.div variants={textItemVariants} className="inline-flex items-center space-x-1 sm:space-x-2 bg-white border border-[#EAE4D8] px-2 py-1 sm:px-3 sm:py-1.5 rounded-full shadow-sm">
-                    <div className="flex text-amber-500 shrink-0">
-                      {[...Array(5)].map((_, i) => <FiStar key={i} className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 fill-current" />)}
-                    </div>
-                    <span className="text-[7px] sm:text-[10px] font-bold uppercase tracking-wider text-stone-600 truncate max-w-[110px] xs:max-w-none">
-                      {badgeText}
-                    </span>
-                  </motion.div>
-                )}
-
-                <motion.h1 variants={textItemVariants} className="font-serif text-sm xs:text-base sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-[#2F3B0C] leading-[1.2] sm:leading-[1.1] max-w-2xl">
-                  {title} {highlight && <><span className="sm:inline hidden"><br /></span><span className="text-[#C68A2B] italic font-normal font-serif text-xs xs:text-sm sm:text-4xl md:text-5xl lg:text-6xl"> {highlight}</span></>}
-                  {titleLine2 && <><span className="sm:inline hidden"><br /></span><span> {titleLine2}</span></>}
-                </motion.h1>
-
-                {description && (
-                  <motion.p variants={textItemVariants} className="text-[9px] sm:text-sm lg:text-base text-stone-600 max-w-xl leading-normal sm:leading-relaxed line-clamp-2 sm:line-clamp-none hidden xs:block">
-                    {description}
-                  </motion.p>
-                )}
-
-                <motion.div variants={textItemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs font-semibold text-[#2F3B0C]/80 pt-2 max-w-md hidden sm:grid">
-                  {bulletOne && (
-                    <div className="flex items-center space-x-2">
-                      <FiCheckCircle className="w-4 h-4 text-[#4E641A]" />
-                      <span>{bulletOne}</span>
-                    </div>
-                  )}
-                  {bulletTwo && (
-                    <div className="flex items-center space-x-2">
-                      <FiCheckCircle className="w-4 h-4 text-[#4E641A]" />
-                      <span>{bulletTwo}</span>
-                    </div>
-                  )}
-                  {bulletThree && (
-                    <div className="flex items-center space-x-2">
-                      <FiCheckCircle className="w-4 h-4 text-[#4E641A]" />
-                      <span>{bulletThree}</span>
-                    </div>
-                  )}
-                  {bulletFour && (
-                    <div className="flex items-center space-x-2">
-                      <FiCheckCircle className="w-4 h-4 text-[#4E641A]" />
-                      <span>{bulletFour}</span>
-                    </div>
-                  )}
-                </motion.div>
-
-                <motion.div variants={textItemVariants} className="flex flex-row gap-2 sm:gap-3 pt-1 sm:pt-4 w-full">
-                  {primaryButtonText && (
-                    <button 
-                      onClick={() => {
-                        if (primaryButtonLink && primaryButtonLink !== '/') {
-                          navigate(primaryButtonLink);
-                        } else {
-                          document.getElementById('best-sellers-grid')?.scrollIntoView({ behavior: 'smooth' });
-                        }
-                      }}
-                      className="group px-3 py-1.5 sm:px-8 sm:py-4 bg-[#4E641A] hover:bg-[#2F3B0C] text-white text-[9px] sm:text-xs font-bold uppercase tracking-wider sm:tracking-widest rounded-lg sm:rounded-xl transition duration-300 flex items-center justify-center space-x-1.5 sm:space-x-3 shadow-md cursor-pointer border-none"
-                    >
-                      <span>{primaryButtonText}</span>
-                      <FiArrowRight className="w-2.5 h-2.5 sm:w-4 sm:h-4 group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  )}
-                  {secondaryButtonText && (
-                    <button 
-                      onClick={() => {
-                        if (secondaryButtonLink && secondaryButtonLink !== '/') {
-                          navigate(secondaryButtonLink);
-                        } else {
-                          document.getElementById('collections-grid')?.scrollIntoView({ behavior: 'smooth' });
-                        }
-                      }}
-                      className="px-3 py-1.5 sm:px-8 sm:py-4 bg-white hover:bg-stone-50 text-[#4E641A] border border-[#EAE4D8] text-[9px] sm:text-xs font-bold uppercase tracking-wider sm:tracking-widest rounded-lg sm:rounded-xl transition duration-300 shadow-sm cursor-pointer text-center font-semibold sm:block hidden"
-                    >
-                      {secondaryButtonText}
-                    </button>
-                  )}
-                </motion.div>
-
-                {promoCodeText && (
-                  <motion.div variants={textItemVariants} className="pt-2 flex items-center space-x-2 text-[10px] font-bold uppercase tracking-wider text-[#C68A2B] hidden sm:flex">
-                    <span className="bg-[#C68A2B]/10 px-2 py-1 rounded-md">PROMO</span>
-                    <span>{promoCodeText}</span>
-                  </motion.div>
+                {desktopHeroImageUrl ? (
+                  <motion.img
+                    animate={{ y: [0, -12, 0] }}
+                    transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
+                    src={desktopHeroImageUrl}
+                    srcSet={getImageSrcSet(packetImage, { widths: [800, 1500, 2000, 2500], cropMode: 'limit', crop: activeHero })}
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    alt={activeProduct?.name || 'Suryodaya Product Packet'}
+                    className="h-[320px] sm:h-[380px] lg:h-[430px] xl:h-[480px] w-auto object-contain"
+                  />
+                ) : (
+                  <div className="w-40 h-56 rounded-2xl bg-gradient-to-tr from-[#EDE7D9] to-[#FDFBF7] flex items-center justify-center font-serif text-stone-400">
+                    Product Image
+                  </div>
                 )}
               </motion.div>
 
-              {/* Right Visual Image */}
-              <motion.div 
-                variants={rightCardVariants}
-                initial="hidden"
-                animate="visible"
-                className="col-span-12 lg:col-span-5 relative mt-0 flex justify-center w-full"
-              >
-                {!featuredProduct ? (
-                  <div className="w-full">
-                    <ProductSkeleton />
-                  </div>
-                ) : (
-                  <div className="relative w-full h-[120px] min-[360px]:h-[145px] min-[390px]:h-[165px] sm:h-[450px] rounded-2xl sm:rounded-[36px] overflow-hidden border border-[#EAE4D8] shadow-md sm:shadow-2xl bg-white p-1.5 sm:p-4">
-                    <div className="absolute inset-0 bg-gradient-to-tr from-[#F6F3ED] via-[#F9F6F0] to-[#EAE4D8]/20 z-0" />
-                    
-                    <picture className="w-full h-full sm:h-2/3 rounded-xl sm:rounded-[28px] overflow-hidden border border-stone-100 z-10 relative shadow block">
-                      <source media="(max-width: 640px)" srcSet={mobileHeroImageUrl} />
-                      <source media="(max-width: 1024px)" srcSet={tabletHeroImageUrl} />
-                      {desktopHeroImageUrl ? (
-                        <img 
-                          src={desktopHeroImageUrl} 
-                          alt="Storefront Hero Staple" 
-                          loading="lazy"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-stone-200" />
-                      )}
-                    </picture>
-
-                    <div className="hidden sm:block p-4 relative z-10 space-y-2 mt-4 text-left">
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-[#C68A2B] bg-[#C68A2B]/10 px-2 py-0.5 rounded-full inline-block">
-                        {currentHero.isFeatured ? '★ Featured Harvest' : 'Staple Harvest of the Month'}
+              {/* Simulated/Dynamic Floating Badge Overlay (Desktop) */}
+              {(matchedHero?.floatingBadgeTitle?.trim() || matchedHero?.floatingBadge?.title?.trim() || matchedHero?.floatingBadgeSubtitle?.trim() || matchedHero?.floatingBadge?.subtitle?.trim()) ? (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="absolute top-4 right-[10%] bg-white/90 backdrop-blur-sm border border-[#EAE4D8]/80 rounded-2xl p-2 sm:p-2.5 shadow-md flex items-center space-x-2 z-20 pointer-events-none select-none max-w-[150px]"
+                >
+                  <span className="text-base sm:text-lg">🌾</span>
+                  <div className="text-left leading-none font-sans">
+                    {(matchedHero?.floatingBadgeTitle?.trim() || matchedHero?.floatingBadge?.title?.trim()) && (
+                      <span className="block text-[9.5px] sm:text-[10px] font-extrabold text-[#2F3B0C] truncate">
+                        {matchedHero?.floatingBadgeTitle?.trim() || matchedHero?.floatingBadge?.title?.trim()}
                       </span>
-                      <h3 className="font-serif text-lg font-bold text-[#2F3B0C] line-clamp-1">
-                        {featuredProductName}
-                      </h3>
-                      <div className="flex justify-between items-center pt-1">
-                        <div className="flex items-baseline space-x-2">
-                          <span className="text-base font-bold text-[#4E641A]">₹{featuredProductPrice}</span>
-                          {featuredProductOriginalPrice > featuredProductPrice && (
-                            <span className="text-xs line-through text-stone-400 font-medium">₹{featuredProductOriginalPrice}</span>
-                          )}
-                        </div>
-                        <button 
-                          onClick={handleFeaturedProductAction}
-                          disabled={hasFeaturedProduct && featuredProduct.inventory <= 0}
-                          className={`px-4 py-2 text-white text-[10px] font-bold uppercase tracking-wider rounded-lg transition shadow-sm border-none ${
-                            hasFeaturedProduct && featuredProduct.inventory <= 0 
-                              ? 'bg-stone-300 cursor-not-allowed' 
-                              : 'bg-[#4E641A] hover:bg-[#2F3B0C] cursor-pointer'
-                          }`}
-                        >
-                          {hasFeaturedProduct && featuredProduct.inventory <= 0 ? 'Sold Out' : 'Quick Add'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Discount Offer Badge */}
-                    {offerBadgeText && (
-                      <div className="absolute top-3 right-3 sm:top-8 sm:right-8 bg-[#C68A2B] text-white text-[8px] sm:text-xs font-extrabold uppercase py-1 px-2 sm:py-2 sm:px-3.5 rounded-full shadow-md sm:shadow-lg z-20 flex flex-col items-center leading-none">
-                        <span>{offerBadgeText}</span>
-                      </div>
+                    )}
+                    {(matchedHero?.floatingBadgeSubtitle?.trim() || matchedHero?.floatingBadge?.subtitle?.trim()) && (
+                      <span className="block text-[8px] sm:text-[8.5px] text-[#C68A2B] font-bold uppercase tracking-wider mt-0.5">
+                        {matchedHero?.floatingBadgeSubtitle?.trim() || matchedHero?.floatingBadge?.subtitle?.trim()}
+                      </span>
                     )}
                   </div>
-                )}
+                </motion.div>
+              ) : null}
 
-                {(floatingBadgeTitle || floatingBadgeSubtitle) && (
-                  <div className="hero-floating-card flex absolute -bottom-6 -left-6 bg-white/80 border border-[#EAE4D8] rounded-2xl p-4 shadow-lg items-center space-x-3.5 z-20">
-                    <div className="w-9 h-9 rounded-full bg-[#4E641A]/10 text-[#4E641A] flex items-center justify-center font-bold">
-                      🌾
+              {/* Featured Product Card Overlay (Desktop) */}
+              {resolvedFeaturedProduct ? (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 15 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                  onClick={() => navigate(`/products/${resolvedFeaturedProduct.slug}`)}
+                  className="absolute bottom-4 left-[5%] bg-white/90 backdrop-blur-sm border border-[#EAE4D8]/80 rounded-2xl p-2.5 shadow-lg flex items-center justify-between gap-3 text-left z-20 cursor-pointer hover:scale-[1.03] hover:shadow-xl transition-all duration-300 max-w-[220px] pointer-events-auto"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <img
+                      src={resolvedFeaturedProduct.image || resolvedFeaturedProduct.images?.[0]?.url}
+                      alt={resolvedFeaturedProduct.name}
+                      className="w-9 h-9 rounded-lg object-contain bg-[#FAF8F5] border border-[#EAE4D8]/50 p-1 shrink-0 filter drop-shadow-xs"
+                    />
+                    <div className="min-w-0">
+                      <span className="block text-[7.5px] font-bold text-stone-400 uppercase tracking-widest leading-none">Featured Product</span>
+                      <span className="block text-[9.5px] font-bold text-[#2F3B0C] truncate mt-0.5 leading-tight">{resolvedFeaturedProduct.name}</span>
+                      <span className="block text-[8px] font-bold text-[#4E641A] mt-0.5 font-sans">
+                        ₹{resolvedFeaturedProduct.price}
+                        {resolvedFeaturedProduct.compareAtPrice && (
+                          <span className="line-through text-stone-400 font-medium ml-1">₹{resolvedFeaturedProduct.compareAtPrice}</span>
+                        )}
+                      </span>
                     </div>
-                    <div className="text-left">
-                      {floatingBadgeTitle && <span className="block text-xs font-bold">{floatingBadgeTitle}</span>}
-                      {floatingBadgeSubtitle && <span className="block text-[9px] text-stone-500 uppercase tracking-wider font-semibold">{floatingBadgeSubtitle}</span>}
-                    </div>
+                  </div>
+                  {(matchedHero?.offerBadge?.trim() || matchedHero?.offerBadgeText?.trim()) ? (
+                    <span className="bg-[#C68A2B] text-white text-[7.5px] font-extrabold uppercase py-0.5 px-1.5 rounded-full shadow-sm leading-none shrink-0 animate-pulse">
+                      {matchedHero.offerBadge?.trim() || matchedHero.offerBadgeText?.trim()}
+                    </span>
+                  ) : null}
+                </motion.div>
+              ) : null}
+
+            </div>
+
+            {/* Product Selector Strip (Desktop) */}
+            <div className="md:col-span-2 mt-6 md:mt-[84px] lg:mt-[104px] border-t border-[#EAE4D8]/60 pt-4 flex flex-col items-center">
+              {/* Header */}
+              <div className="flex items-center space-x-2 mb-2">
+                <span className="text-[#C68A2B] text-xs">🍃</span>
+                <h3 className="font-serif text-[#2F3B0C] text-[10px] font-bold uppercase tracking-wider text-center">
+                  Our Superfood Range
+                </h3>
+                <span className="text-[#C68A2B] text-xs">🌿</span>
+              </div>
+
+              {/* Selectors flex row */}
+              <div className="flex flex-row justify-center gap-2 md:gap-2.5 w-full select-none">
+                {sortedHeroes.map((hr, idx) => {
+                  const isActive = idx === activeHeroIndex;
+                  const featuredProd = hr.featuredProduct || (hr.featuredProductId ? productsList.find(p => p.id === hr.featuredProductId) : null);
+                  const imageSrc = hr.showcaseImage || hr.heroImage || featuredProd?.image || featuredProd?.images?.[0]?.url || "";
+                  const displayName = featuredProd?.name
+                    ? featuredProd.name.replace(' Leaf Powder', '').replace(' Powder', '').replace(' Flour', '')
+                    : hr.headingLine1 || 'Staple';
+
+                  return (
+                    <button
+                      key={hr.id || idx}
+                      onClick={() => setSelectedProductIndex(idx)}
+                      className={`flex flex-row items-center space-x-2 p-1.5 w-[95px] xs:w-[105px] sm:w-[115px] md:w-[140px] h-[44px] sm:h-[48px] border rounded-xl transition-all duration-300 cursor-pointer bg-white text-left ${isActive
+                        ? 'border-[#2F3B0C] shadow-md bg-stone-50/50 scale-[1.02] ring-1 ring-[#2F3B0C]'
+                        : 'border-[#EAE4D8] shadow-sm hover:border-stone-400/80 hover:scale-[1.01]'
+                        }`}
+                    >
+                      {/* Thumbnail Packet */}
+                      <div className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center shrink-0 overflow-hidden relative">
+                        {imageSrc ? (
+                          <img
+                            src={getOptimizedImageUrl(imageSrc, { width: 400, cropMode: 'limit' })}
+                            alt={displayName}
+                            loading="lazy"
+                            className="w-full h-full object-contain filter drop-shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-7 h-7 rounded bg-stone-100 flex items-center justify-center text-[7px] text-stone-400">
+                            {displayName.substring(0, 8)}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Selector title */}
+                      <span className="font-serif text-[9px] sm:text-[10px] font-bold text-[#2F3B0C] block tracking-tight line-clamp-1">
+                        {displayName}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          {/* Mobile Layout (< md) */}
+          <div className="flex md:hidden flex-col space-y-4 text-center items-center w-full">
+
+            {/* 1. Product Image (Showcase packet centered, 70-80% max-width) */}
+            <div className="relative flex justify-center items-center pt-2 pb-2 h-[180px] w-full overflow-hidden">
+              {/* Wooden Round Board backdrop ellipse */}
+              <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-[70%] h-[45px] bg-gradient-to-br from-[#D8C7B3] to-[#C0AD97] opacity-70 border border-[#BFAFA1]/40 z-0 rounded-[100%] shadow-md" />
+
+              {/* Dynamic Floating Ingredients for mobile */}
+              {renderFloatingIngredients(getIngredientKey(activeHero))}
+
+              <motion.div
+                key={selectedProductIndex}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="relative z-10 h-[160px] max-w-[70%] sm:max-w-[80%] mx-auto flex items-center justify-center filter drop-shadow-xl"
+              >
+                {desktopHeroImageUrl ? (
+                  <motion.img
+                    animate={{ y: [0, -6, 0] }}
+                    transition={{ repeat: Infinity, duration: 4.5, ease: "easeInOut" }}
+                    src={getOptimizedImageUrl(packetImage, { width: 1550, cropMode: 'limit', crop: activeHero })}
+                    srcSet={getImageSrcSet(packetImage, { widths: [400, 800, 1500], cropMode: 'limit', crop: activeHero })}
+                    sizes="100vw"
+                    alt={activeProduct?.name}
+                    className="h-full w-auto object-contain"
+                  />
+                ) : (
+                  <div className="w-20 h-30 rounded-xl bg-stone-200 flex items-center justify-center text-xs text-stone-400">
+                    Product Image
                   </div>
                 )}
               </motion.div>
-            </motion.div>
-          </AnimatePresence>
-        </div>
+            </div>
 
-        {/* Slider Indicators & Controls Bar */}
-        {heroesList.length > 1 && (
-          <div className="hidden md:flex max-w-7xl mx-auto mt-12 items-center justify-between gap-6 border-t border-[#EAE4D8]/60 pt-6 text-xs text-stone-500 relative z-10 select-none">
-            {/* Fraction & Navigation buttons */}
-            <div className="flex items-center space-x-4">
-              <span className="font-serif text-sm font-bold text-[#2F3B0C]">
-                {String(currentSlideIndex + 1).padStart(2, '0')} <span className="text-stone-300">/</span> {String(heroesList.length).padStart(2, '0')}
-              </span>
-              <div className="flex space-x-2">
-                <button 
-                  onClick={prevSlide}
-                  className="w-8 h-8 rounded-full border border-[#EAE4D8] flex items-center justify-center text-stone-600 hover:bg-[#4E641A] hover:text-white transition duration-300 cursor-pointer border-none bg-transparent"
-                  title="Previous Campaign"
-                >
-                  <FiChevronRight className="rotate-180 text-stone-550" />
-                </button>
-                <button 
-                  onClick={nextSlide}
-                  className="w-8 h-8 rounded-full border border-[#EAE4D8] flex items-center justify-center text-stone-600 hover:bg-[#4E641A] hover:text-white transition duration-300 cursor-pointer border-none bg-transparent"
-                  title="Next Campaign"
-                >
-                  <FiChevronRight className="text-stone-550" />
-                </button>
+            {/* 2. Product Selector Strip (placed directly below the image for touch control) */}
+            <div className="w-full mt-0.5 flex flex-col items-center">
+              <div className="flex flex-row gap-1.5 overflow-x-auto no-scrollbar py-1 w-full justify-start xs:justify-center px-4 select-none">
+                {sortedHeroes.map((hr, idx) => {
+                  const isActive = idx === activeHeroIndex;
+                  const featuredProd = hr.featuredProduct || (hr.featuredProductId ? productsList.find(p => p.id === hr.featuredProductId) : null);
+                  const imageSrc = hr.showcaseImage || hr.heroImage || featuredProd?.image || featuredProd?.images?.[0]?.url || "";
+                  const displayName = featuredProd?.name
+                    ? featuredProd.name.replace(' Leaf Powder', '').replace(' Powder', '').replace(' Flour', '')
+                    : hr.headingLine1 || 'Staple';
+
+                  return (
+                    <button
+                      key={hr.id || idx}
+                      onClick={() => setSelectedProductIndex(idx)}
+                      className={`flex flex-row items-center space-x-1 p-1 min-w-[84px] h-[34px] border rounded-lg transition-all duration-300 bg-white text-left ${isActive
+                        ? 'border-[#2F3B0C] shadow-md bg-stone-50 ring-1 ring-[#2F3B0C]'
+                        : 'border-[#EAE4D8] shadow-sm'
+                        }`}
+                    >
+                      <div className="w-5 h-5 flex items-center justify-center shrink-0">
+                        {imageSrc ? (
+                          <img src={getOptimizedImageUrl(imageSrc, { width: 400, cropMode: 'limit' })} alt={displayName} className="w-full h-full object-contain" />
+                        ) : (
+                          <div className="w-5 h-5 rounded bg-stone-100 flex items-center justify-center text-[6px]">
+                            {displayName[0]}
+                          </div>
+                        )}
+                      </div>
+                      <span className="font-serif text-[8.5px] font-bold text-[#2F3B0C] truncate">
+                        {displayName}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Pagination Dots with Micro Progress bar */}
-            <div className="flex items-center space-x-3">
-              {heroesList.map((hr, idx) => {
-                const isActive = idx === currentSlideIndex;
-                return (
-                  <button
-                    key={hr.id || idx}
-                    onClick={() => {
-                      setSlideDirection(idx > currentSlideIndex ? 1 : -1);
-                      setCurrentSlideIndex(idx);
-                    }}
-                    className="group relative h-2 flex items-center transition-all cursor-pointer border-none bg-transparent"
-                    style={{ width: isActive ? '40px' : '8px' }}
-                    title={`Go to slide ${idx + 1}`}
-                  >
-                    {isActive ? (
-                      <div className="w-full h-1.5 rounded-full bg-stone-200 overflow-hidden relative">
-                        {/* Interactive ticking progress bar inside dot */}
-                        <motion.div 
-                          key={currentSlideIndex}
-                          initial={{ width: "0%" }}
-                          animate={{ width: !sliderAutoRotate ? "0%" : "100%" }}
-                          transition={{ 
-                            duration: !sliderAutoRotate ? 0 : sliderDuration, 
-                            ease: "linear" 
-                          }}
-                          className="absolute top-0 left-0 h-full bg-[#4E641A] rounded-full"
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-2 h-2 rounded-full bg-stone-300 group-hover:bg-stone-555 transition duration-300" />
-                    )}
-                  </button>
-                );
-              })}
+            {/* 3. Badge */}
+            {trustBadgeText ? (
+              <div className="inline-flex items-center space-x-1 bg-[#E8EFE0] border border-[#D5E2C7] px-3 py-1 rounded-full shadow-xs mt-1">
+                <span className="text-[9px] sm:text-xs font-bold uppercase tracking-wider text-[#2F3B0C] flex items-center">
+                  {trustBadgeText}
+                </span>
+              </div>
+            ) : null}
+
+            {/* 4. Title & Subtitle */}
+            <div className="space-y-1 px-6 text-center">
+              <h2 className="font-serif text-xl sm:text-2xl font-bold tracking-tight text-[#2F3B0C] leading-tight">
+                {headingLine1 && <span className="block text-[#2F3B0C]">{headingLine1}</span>}
+              </h2>
+              {headingHighlight && (
+                <span className="block text-sm sm:text-base text-[#C68A2B] italic font-normal font-serif mt-0.5">
+                  {headingHighlight}
+                </span>
+              )}
+              {headingLine2 && (
+                <span className="block text-sm sm:text-base font-bold text-[#C68A2B] uppercase tracking-wider">
+                  {headingLine2}
+                </span>
+              )}
             </div>
 
-            {/* Slider Status Info */}
-            <div className="hidden lg:flex items-center space-x-2 text-[10px] font-bold uppercase tracking-wider text-stone-400">
-              <span className={`w-1.5 h-1.5 rounded-full ${!sliderAutoRotate ? 'bg-amber-500' : 'bg-[#4E641A] animate-pulse'}`} />
-              <span>{!sliderAutoRotate ? 'Manual Mode' : 'Auto Rotating'}</span>
+            {/* 5. Description */}
+            <p className="text-xs sm:text-sm text-stone-600 leading-relaxed font-medium px-6 max-w-sm mx-auto mt-1">
+              {description}
+            </p>
+
+            {/* 6. Benefits checkmarks */}
+            <div className="flex flex-wrap justify-center gap-x-3.5 gap-y-1.5 pt-1 border-t border-[#EAE4D8]/40 w-full px-6 text-[9px] sm:text-xs text-stone-500 font-bold uppercase tracking-wider mt-2">
+              {[bulletOne, bulletTwo, bulletThree, bulletFour].filter(Boolean).map((bullet, idx) => (
+                <span key={idx}>✓ {bullet}</span>
+              ))}
             </div>
+
+            {/* 7. CTA Buttons (Full width on mobile) */}
+            <div className="flex flex-col gap-2.5 w-full px-6 max-w-sm justify-center mt-3">
+              <button
+                onClick={handleFeaturedProductAction}
+                className="w-full h-11 bg-[#2F3B0C] hover:bg-[#1E2707] text-white text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all duration-300 shadow-md cursor-pointer border-none text-center flex items-center justify-center space-x-2"
+              >
+                <span>{primaryButtonText}</span>
+                <FiArrowRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => {
+                  document.getElementById('best-sellers-grid')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="w-full h-11 bg-white hover:bg-stone-50 text-[#2F3B0C] border border-[#2F3B0C] text-[11px] font-bold uppercase tracking-widest rounded-xl transition-all duration-300 shadow-sm cursor-pointer text-center"
+              >
+                {secondaryButtonText}
+              </button>
+            </div>
+
+            {/* Promo Code Bar */}
+            {activeHero?.promoText && (
+              <div className="mx-6 w-[calc(100%-3rem)] max-w-sm flex items-center justify-center space-x-1.5 text-[8.5px] font-bold uppercase text-[#C68A2B] bg-[#C68A2B]/10 py-1.5 px-3 rounded-xl border border-[#C68A2B]/20 select-all mt-2">
+                <span className="bg-[#C68A2B] text-white px-1.5 py-0.5 rounded text-[7.5px] tracking-wider leading-none">PROMO</span>
+                <span className="truncate">{activeHero.promoText}</span>
+              </div>
+            )}
+
+            {/* 8. Product Information Card (centered full width card, click opens details page) */}
+            {resolvedFeaturedProduct ? (
+              <div
+                onClick={() => navigate(`/products/${resolvedFeaturedProduct.slug}`)}
+                className="w-full px-6 max-w-sm mt-3 cursor-pointer pointer-events-auto"
+              >
+                <div className="bg-white border border-[#EAE4D8] rounded-2xl p-3 shadow-md flex items-center justify-between gap-3 hover:scale-[1.01] transition-all duration-300 text-left">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <img
+                      src={resolvedFeaturedProduct.image || resolvedFeaturedProduct.images?.[0]?.url}
+                      alt={resolvedFeaturedProduct.name}
+                      className="w-11 h-11 rounded-xl object-contain bg-[#FAF8F5] border border-[#EAE4D8]/50 p-1 shrink-0 filter drop-shadow-xs"
+                    />
+                    <div className="min-w-0">
+                      <span className="block text-[7.5px] font-bold text-stone-400 uppercase tracking-widest leading-none font-sans">Featured Product</span>
+                      <span className="block text-[10.5px] font-bold text-[#2F3B0C] truncate mt-1 leading-tight">{resolvedFeaturedProduct.name}</span>
+                      <span className="block text-[9.5px] font-bold text-[#4E641A] mt-1 font-sans">
+                        ₹{resolvedFeaturedProduct.price}
+                        {resolvedFeaturedProduct.compareAtPrice && (
+                          <span className="line-through text-stone-400 font-medium ml-1.5">₹{resolvedFeaturedProduct.compareAtPrice}</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                  {(matchedHero?.offerBadge?.trim() || matchedHero?.offerBadgeText?.trim()) ? (
+                    <span className="bg-[#C68A2B] text-white text-[8px] font-extrabold uppercase py-1 px-2 rounded-full shadow-xs leading-none shrink-0 animate-pulse">
+                      {matchedHero.offerBadge?.trim() || matchedHero.offerBadgeText?.trim()}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
-        )}
+        </div>
       </section>
     );
   };
@@ -1102,13 +1491,13 @@ export default function Home() {
       <section key="best-sellers" id="best-sellers-grid" className="py-20 px-6 md:px-12 max-w-7xl mx-auto border-b border-[#EAE4D8]">
         <div className="text-center max-w-xl mx-auto space-y-4 mb-16">
           <span className="text-xs font-bold uppercase tracking-widest text-[#C68A2B] bg-[#C68A2B]/10 px-3.5 py-1 rounded-full">
-            Customer Favorites
+            {settings.homepage_section_badge_best_sellers || "Customer Favorites"}
           </span>
           <h2 className="font-serif text-3xl md:text-5xl font-semibold text-[#2F3B0C]">
-            Direct From Soil Best Sellers
+            {settings.homepage_section_title_best_sellers || "Direct From Soil Best Sellers"}
           </h2>
           <p className="text-xs md:text-sm text-stone-500 leading-relaxed font-medium">
-            Discover the daily organic essentials that nourish thousands of Indian families. Non-GMO, freshly batched, and absolute chemical-free.
+            {settings.homepage_section_subtitle_best_sellers || "Discover the daily organic essentials that nourish thousands of Indian families. Non-GMO, freshly batched, and absolute chemical-free."}
           </p>
         </div>
 
@@ -1118,11 +1507,10 @@ export default function Home() {
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all duration-300 cursor-pointer ${
-                (activeCategory === 'All' && cat.id === 'All') || activeCategory?.id === cat.id
-                  ? 'bg-[#4E641A] text-white border-transparent shadow'
-                  : 'bg-white hover:bg-stone-50 text-stone-600 border-[#EAE4D8]'
-              }`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all duration-300 cursor-pointer ${(activeCategory === 'All' && cat.id === 'All') || activeCategory?.id === cat.id
+                ? 'bg-[#4E641A] text-white border-transparent shadow'
+                : 'bg-white hover:bg-stone-50 text-stone-600 border-[#EAE4D8]'
+                }`}
             >
               {cat.name}
             </button>
@@ -1159,10 +1547,10 @@ export default function Home() {
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="text-center max-w-2xl mx-auto space-y-3 mb-12">
             <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#C68A2B]">
-              The Suryodaya Standard
+              {settings.homepage_section_badge_trust || "The Suryodaya Standard"}
             </span>
             <h2 className="font-serif text-2xl md:text-4xl font-semibold leading-tight text-white">
-              Purity Certified at Every Step of the Soil
+              {settings.homepage_section_title_trust || "Purity Certified at Every Step of the Soil"}
             </h2>
           </div>
 
@@ -1233,7 +1621,7 @@ export default function Home() {
   };
 
   const renderCollectionsSection = () => {
-    const collectionsToShow = homepageCollections;
+    const collectionsToShow = signatureCollections;
 
     if (collectionsToShow.length === 0) {
       if (isLoading) {
@@ -1242,23 +1630,39 @@ export default function Home() {
       return null;
     }
 
-    const gridColsClass = collectionsToShow.length >= 3 
-      ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" 
-      : "grid grid-cols-1 md:grid-cols-2 gap-8";
-
+    const getProductCountForCollection = (coll) => {
+      if (!coll.categorySlug || coll.categorySlug === 'all') {
+        return productsList.length;
+      }
+      const category = homepageCategories.find(
+        c => c.slug === coll.categorySlug || c.id === coll.categorySlug || c.name?.toLowerCase() === coll.title?.toLowerCase()
+      );
+      if (category && category._count) {
+        return category._count.products;
+      }
+      return productsList.filter(p =>
+        p.categories?.some(cat => cat.slug === coll.categorySlug || cat.id === coll.categorySlug) ||
+        p.categoryId === coll.categorySlug
+      ).length;
+    };
 
     return (
       <section key="collections" id="collections-grid" className="py-20 px-6 md:px-12 max-w-7xl mx-auto border-b border-[#EAE4D8]">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12 text-left">
           <div className="space-y-2">
             <span className="text-xs font-bold uppercase tracking-widest text-[#C68A2B]">
-              Handcrafted Categories
+              {settings.homepage_section_badge_collections || "Handcrafted Categories"}
             </span>
             <h2 className="font-serif text-3xl md:text-5xl font-semibold text-[#2F3B0C]">
-              Signature Farm Collections
+              {settings.homepage_section_title_collections || "Signature Farm Collections"}
             </h2>
+            {settings.homepage_section_subtitle_collections && (
+              <p className="text-xs md:text-sm text-stone-500 leading-relaxed font-medium">
+                {settings.homepage_section_subtitle_collections}
+              </p>
+            )}
           </div>
-          <button 
+          <button
             onClick={() => { setActiveCategory({ id: 'All', name: 'All' }); document.getElementById('best-sellers-grid')?.scrollIntoView({ behavior: 'smooth' }); }}
             className="group inline-flex items-center space-x-2 text-xs font-bold uppercase tracking-widest text-[#4E641A] hover:text-[#2F3B0C] transition cursor-pointer border-none bg-transparent"
           >
@@ -1267,35 +1671,18 @@ export default function Home() {
           </button>
         </div>
 
-        <div className={`${gridColsClass} signature-grid`}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 w-full signature-grid">
           {collectionsToShow.map((coll) => {
-            let meta = {
-              subtitle: coll.description || '',
-              mobileImage: '',
-              overlayPosition: 'bottom-left',
-              overlayDarkness: 0.5,
-              textColorTheme: 'light',
-              ctaText: coll.ctaText || 'Browse Collection',
-              badge: coll.badge || ''
-            };
-            if (coll.description && coll.description.startsWith('{')) {
-              try {
-                const parsed = JSON.parse(coll.description);
-                meta = { ...meta, ...parsed };
-              } catch (e) {}
-            }
+            const count = getProductCountForCollection(coll);
+            const countText = `${count} ${count === 1 ? 'Product' : 'Products'}`;
 
-            const darkness = meta.overlayDarkness !== undefined ? parseFloat(meta.overlayDarkness) : 0.5;
-            // Normalize overlay gradients to fade top (transparent) to bottom (dark gradient zone)
-            const overlayBg = `linear-gradient(to top, rgba(0,0,0,${darkness + 0.35}) 0%, rgba(0,0,0,${darkness}) 45%, rgba(0,0,0,0.1) 75%, transparent 100%)`;
-
-            const desktopCollUrl = getOptimizedImageUrl(coll.image, { width: 600, height: 420, cropMode: 'fill' });
-            const mobileCollUrl = getOptimizedImageUrl(meta.mobileImage || coll.image, { width: 350, height: 380, cropMode: 'fill' });
+            const desktopCollUrl = getOptimizedImageUrl(coll.image, { width: 600, height: 380, cropMode: 'fill' });
+            const mobileCollUrl = getOptimizedImageUrl(coll.image, { width: 450, height: 300, cropMode: 'fill' });
 
             return (
-              <div 
-                key={coll.id} 
-                className="group relative h-[380px] md:h-[420px] rounded-[24px] md:rounded-[32px] overflow-hidden border border-[#EAE4D8] shadow-sm hover:shadow-[0_20px_40px_rgba(78,100,26,0.15)] cursor-pointer text-left transition-all duration-500 hover:-translate-y-1.5 bg-stone-900 signature-card" 
+              <div
+                key={coll.id}
+                className="group relative w-full h-[180px] sm:h-[200px] md:h-[240px] rounded-[24px] md:rounded-[32px] overflow-hidden border border-[#EAE4D8]/60 shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_12px_24px_rgba(0,0,0,0.06)] cursor-pointer text-left transition-all duration-500 hover:-translate-y-1.5 bg-stone-900 signature-card"
                 onClick={() => {
                   if (coll.categorySlug && coll.categorySlug !== 'all') {
                     navigate(`/products?category=${coll.categorySlug}`);
@@ -1304,64 +1691,46 @@ export default function Home() {
                   }
                 }}
               >
-                {/* Desktop Background Image with subtle zoom */}
-                <img 
-                  src={desktopCollUrl} 
-                  alt={coll.title} 
-                  width={600}
-                  height={420}
+                {/* Background Image with subtle zoom */}
+                <img
+                  src={getOptimizedImageUrl(coll.image, { width: 800, cropMode: 'fill' })}
+                  srcSet={getImageSrcSet(coll.image, { widths: [400, 800, 1500], cropMode: 'fill' })}
+                  sizes="(max-width: 768px) 85vw, 33vw"
+                  alt={coll.title}
                   loading="lazy"
-                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105 opacity-85 group-hover:opacity-80 hidden md:block"
-                />
-                
-                {/* Mobile Background Image with subtle zoom */}
-                <img 
-                  src={mobileCollUrl} 
-                  alt={coll.title} 
-                  width={350}
-                  height={380}
-                  loading="lazy"
-                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105 opacity-85 group-hover:opacity-80 block md:hidden"
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04] opacity-90 group-hover:opacity-85"
                 />
 
                 {/* Dark Gradient Overlay for Readability */}
-                <div 
+                <div
                   className="absolute inset-0 z-10 pointer-events-none transition-all duration-500 group-hover:brightness-95"
-                  style={{ background: overlayBg }}
+                  style={{
+                    background: 'linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.5) 50%, rgba(0, 0, 0, 0.2) 100%)'
+                  }}
                 />
-                
-                {/* Text Content - Safe Zone Bottom-Left Overlay with backdrop glass strip */}
-                <div className="absolute bottom-5 left-5 right-5 md:bottom-6 md:left-6 md:right-6 z-20 p-4 md:p-6 rounded-[20px] md:rounded-[24px] bg-black/20 backdrop-blur-md border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] space-y-2 md:space-y-3 transition-all duration-500 group-hover:-translate-y-1 hover:bg-black/25 signature-overlay">
-                  {meta.badge && (
-                    <span className="text-[8px] md:text-[9px] font-extrabold uppercase tracking-widest text-[#C68A2B] bg-[#C68A2B]/10 border border-[#C68A2B]/20 px-2.5 py-0.5 rounded-full inline-block">
-                      {meta.badge}
-                    </span>
-                  )}
-                  
-                  {/* Floating premium storyteller label above title for short subtitles */}
-                  {meta.subtitle && meta.subtitle.length < 50 && (
-                    <span className="block text-[8px] md:text-[9px] font-bold text-[#C68A2B] uppercase tracking-wider line-clamp-1 opacity-90 signature-subtitle">
-                      {meta.subtitle}
-                    </span>
-                  )}
 
-                  <h3 className="font-serif text-lg md:text-2xl font-bold tracking-wide text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] leading-tight signature-title">
+                {/* Text Content - Bottom-Left Overlay */}
+                <div className="absolute bottom-0 left-0 w-full z-20 p-5 md:p-6 flex flex-col justify-end text-left select-none pointer-events-none">
+                  {/* Category Title */}
+                  <h3 className="font-serif text-lg md:text-xl font-bold text-white tracking-wide leading-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.5)] signature-title">
                     {coll.title}
                   </h3>
 
-                  {/* Elegant line clamped description block */}
-                  {meta.subtitle && meta.subtitle.length >= 50 && (
-                    <p className="text-[10px] md:text-xs text-stone-200 leading-relaxed font-light line-clamp-2 max-w-prose drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)] signature-description">
-                      {meta.subtitle}
+                  {/* Product Count */}
+                  <span className="text-[10px] md:text-xs font-semibold text-stone-300 tracking-wider uppercase mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)] signature-subtitle">
+                    {countText}
+                  </span>
+
+                  {coll.description && (
+                    <p className="text-[11px] text-stone-200/90 leading-relaxed font-light line-clamp-2 mt-1 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+                      {coll.description}
                     </p>
                   )}
-                  
-                  {/* Redesigned CTA Button with arrow hover micro-animation */}
-                  <div className="pt-1 flex items-center justify-between signature-button">
-                    <span className="inline-flex items-center space-x-2 text-[9px] md:text-[10px] font-extrabold uppercase tracking-widest text-[#C68A2B] transition-colors duration-300 group-hover:text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
-                      <span>{meta.ctaText || 'Browse Collection'}</span>
-                      <FiArrowRight className="w-3.5 h-3.5 transition-transform duration-300 transform group-hover:translate-x-1.5" />
-                    </span>
+
+                  {/* CTA link with arrow icon */}
+                  <div className="mt-2.5 flex items-center text-[10px] md:text-xs font-bold uppercase tracking-widest text-[#C68A2B] group-hover:text-white transition-colors duration-300 signature-button">
+                    <span>{coll.ctaText || 'Browse Collection'}</span>
+                    <FiArrowRight className="w-3.5 h-3.5 ml-1.5 transition-transform duration-300 transform group-hover:translate-x-1" />
                   </div>
                 </div>
               </div>
@@ -1377,19 +1746,19 @@ export default function Home() {
       <section key="benefits" className="py-20 px-6 md:px-12 max-w-7xl mx-auto border-b border-[#EAE4D8] bg-[#FDFBF7]/30">
         <div className="text-center max-w-xl mx-auto space-y-3 mb-12">
           <span className="text-xs font-bold uppercase tracking-widest text-[#C68A2B] bg-[#C68A2B]/10 px-3.5 py-1 rounded-full">
-            Targeted Purity
+            {settings.homepage_section_badge_benefits || "Targeted Purity"}
           </span>
           <h2 className="font-serif text-3xl md:text-5xl font-semibold text-[#2F3B0C]">
-            Shop By Health Benefit
+            {settings.homepage_section_title_benefits || "Shop By Health Benefit"}
           </h2>
           <p className="text-xs md:text-sm text-stone-500 font-medium">
-            Find the perfect staple configured for your family's personal wellness pathways.
+            {settings.homepage_section_subtitle_benefits || "Find the perfect staple configured for your family's personal wellness pathways."}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 text-left benefits-grid">
-          <div 
-            className="bg-white border border-[#EAE4D8] rounded-2xl p-6 shadow-sm transition duration-300 group cursor-default benefits-card"
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-6 text-left benefits-grid">
+          <div
+            className="bg-white border border-[#EAE4D8] rounded-2xl p-4 sm:p-6 shadow-sm transition duration-300 group cursor-default benefits-card"
           >
             <span className="text-2xl mb-4 block">❤️</span>
             <h4 className="font-serif text-base font-bold text-[#2F3B0C]">Heart Healthy</h4>
@@ -1398,8 +1767,8 @@ export default function Home() {
             </p>
           </div>
 
-          <div 
-            className="bg-white border border-[#EAE4D8] rounded-2xl p-6 shadow-sm transition duration-300 group cursor-default benefits-card"
+          <div
+            className="bg-white border border-[#EAE4D8] rounded-2xl p-4 sm:p-6 shadow-sm transition duration-300 group cursor-default benefits-card"
           >
             <span className="text-2xl mb-4 block">🌾</span>
             <h4 className="font-serif text-base font-bold text-[#2F3B0C]">Diabetic Friendly</h4>
@@ -1408,8 +1777,8 @@ export default function Home() {
             </p>
           </div>
 
-          <div 
-            className="bg-white border border-[#EAE4D8] rounded-2xl p-6 shadow-sm transition duration-300 group cursor-default benefits-card"
+          <div
+            className="bg-white border border-[#EAE4D8] rounded-2xl p-4 sm:p-6 shadow-sm transition duration-300 group cursor-default benefits-card"
           >
             <span className="text-2xl mb-4 block">💪</span>
             <h4 className="font-serif text-base font-bold text-[#2F3B0C]">Protein Rich</h4>
@@ -1418,8 +1787,8 @@ export default function Home() {
             </p>
           </div>
 
-          <div 
-            className="bg-white border border-[#EAE4D8] rounded-2xl p-6 shadow-sm transition duration-300 group cursor-default benefits-card"
+          <div
+            className="bg-white border border-[#EAE4D8] rounded-2xl p-4 sm:p-6 shadow-sm transition duration-300 group cursor-default benefits-card"
           >
             <span className="text-2xl mb-4 block">👧</span>
             <h4 className="font-serif text-base font-bold text-[#2F3B0C]">Kids Nutrition</h4>
@@ -1428,8 +1797,8 @@ export default function Home() {
             </p>
           </div>
 
-          <div 
-            className="bg-white border border-[#EAE4D8] rounded-2xl p-6 shadow-sm transition duration-300 group cursor-default benefits-card"
+          <div
+            className="bg-white border border-[#EAE4D8] rounded-2xl p-4 sm:p-6 shadow-sm transition duration-300 group cursor-default benefits-card col-span-2 lg:col-span-1"
           >
             <span className="text-2xl mb-4 block">🧘</span>
             <h4 className="font-serif text-base font-bold text-[#2F3B0C]">Traditional Wellness</h4>
@@ -1451,26 +1820,26 @@ export default function Home() {
     }
 
     return (
-      <section key="reviews" className="py-20 px-6 md:px-12 bg-[#F3EFE6]/40 border-b border-[#EAE4D8]">
+      <section key="reviews" className="py-10 px-4 md:py-20 md:px-12 bg-[#F3EFE6]/40 border-b border-[#EAE4D8]">
 
         <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-xl mx-auto space-y-3 mb-16">
+          <div className="text-center max-w-xl mx-auto space-y-3 mb-10 md:mb-16">
             <span className="text-xs font-bold uppercase tracking-widest text-[#C68A2B]">
-              Verified Testimonials
+              {settings.homepage_section_badge_reviews || "Verified Testimonials"}
             </span>
             <h2 className="font-serif text-3xl md:text-5xl font-semibold text-[#2F3B0C]">
-              Earning Faith in Indian Homes
+              {settings.homepage_section_title_reviews || "Earning Faith in Indian Homes"}
             </h2>
             <p className="text-xs md:text-sm text-stone-500 font-medium leading-relaxed">
-              Read real stories of restoration, wellness improvements, and flavor rediscoveries from our lovely community.
+              {settings.homepage_section_subtitle_reviews || "Read real stories of restoration, wellness improvements, and flavor rediscoveries from our lovely community."}
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8">
             {testimonialsList.map((review) => (
-              <div 
+              <div
                 key={review.id}
-                className="bg-white border border-stone-200 rounded-[28px] p-8 shadow-sm flex flex-col justify-between text-left space-y-6"
+                className="bg-white border border-stone-200 rounded-[28px] p-5 sm:p-8 shadow-sm flex flex-col justify-between text-left space-y-4 sm:space-y-6"
               >
                 <div className="space-y-4">
                   <div className="flex justify-between items-start">
@@ -1489,13 +1858,13 @@ export default function Home() {
                 <div className="flex items-center space-x-3.5 pt-4 border-t border-stone-100 shrink-0">
                   <div className="w-10 h-10 rounded-full bg-[#4E641A]/10 border border-[#EAE4D8] flex items-center justify-center font-bold text-[#4E641A] font-serif shrink-0 overflow-hidden">
                     {review.customerPhoto && (review.customerPhoto.startsWith('http') || review.customerPhoto.includes('/')) ? (
-                      <img 
-                        src={getOptimizedImageUrl(review.customerPhoto, { width: 40, height: 40, cropMode: 'fill' })} 
-                        alt={review.customerName} 
+                      <img
+                        src={getOptimizedImageUrl(review.customerPhoto, { width: 40, height: 40, cropMode: 'fill' })}
+                        alt={review.customerName}
                         width={40}
                         height={40}
                         loading="lazy"
-                        className="w-full h-full object-cover" 
+                        className="w-full h-full object-cover"
                       />
                     ) : (
                       review.customerPhoto || (review.customerName ? review.customerName.charAt(0) : 'C')
@@ -1539,13 +1908,13 @@ export default function Home() {
 
           <div className="relative z-10 max-w-3xl mx-auto p-8 sm:p-12 md:p-16 flex flex-col items-center text-center gap-5 md:gap-6">
             <span className="font-sans text-[11px] font-bold tracking-[0.25em] uppercase text-[#C68A2B]">
-              Join Our Journey
+              {settings.homepage_section_badge_footer_banner || "Join Our Journey"}
             </span>
             <h2 className="font-serif text-2xl sm:text-4xl md:text-5xl text-white font-bold leading-[1.2] max-w-2xl mx-auto">
-              Bring the Blessings of Pure Soil to Your Family
+              {settings.homepage_section_title_footer_banner || "Bring the Blessings of Pure Soil to Your Family"}
             </h2>
             <p className="font-sans text-xs sm:text-sm text-stone-200/90 leading-relaxed font-light max-w-xl mx-auto">
-              Are you ready to transcend chemical food? Subscribe to our monthly organic farm hampers, book a personalized tour of our fields in Wardha, or partner with us to support our cooperative farmers.
+              {settings.homepage_section_subtitle_footer_banner || "Are you ready to transcend chemical food? Subscribe to our monthly organic farm hampers, book a personalized tour of our fields in Wardha, or partner with us to support our cooperative farmers."}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 mt-4 w-full sm:w-auto justify-center items-center">
               <button
@@ -1568,6 +1937,10 @@ export default function Home() {
   };
 
   const renderSection = (sectName) => {
+    // Section visibility check
+    const isVisible = settings[`homepage_section_visible_${sectName}`] !== 'false';
+    if (!isVisible) return null;
+
     switch (sectName) {
       case 'categories':
         return renderCategoriesSection();
@@ -1634,7 +2007,7 @@ export default function Home() {
     <Profiler id="Homepage" onRender={onRenderCallback}>
 
       <div className="flex flex-col bg-[#F9F6F0] overflow-hidden w-full relative pt-20">
-        
+
         {/* FLOATING SUCCESS TOAST MICRO-ANIMATION */}
         <AnimatePresence>
           {toast.show && (

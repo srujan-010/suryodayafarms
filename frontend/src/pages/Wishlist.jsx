@@ -1,15 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FiHeart, FiTrash2, FiShoppingBag } from 'react-icons/fi';
 import { useWishlistStore } from '../store/useWishlistStore';
 import { useCartStore } from '../store/useCartStore';
 import { useAuthStore } from '../store/useAuthStore';
+import { getOptimizedImageUrl, getImageSrcSet } from '../utils/imageOptimizer';
 
 export default function Wishlist() {
   const navigate = useNavigate();
   const { wishlistItems, toggleWishlist } = useWishlistStore();
   const { addToCart } = useCartStore();
   const { isAuthenticated } = useAuthStore();
+  const [loadedImages, setLoadedImages] = useState({});
+
+  const handleImageLoad = (id) => {
+    setLoadedImages(prev => ({ ...prev, [id]: true }));
+  };
 
   const handleAddToCart = async (product) => {
     if (!isAuthenticated) {
@@ -93,17 +99,27 @@ export default function Wishlist() {
                   key={item.id}
                   className="bg-white rounded-3xl overflow-hidden border border-light-beige hover:shadow-lg transition-all duration-300 flex flex-col justify-between group h-full shadow-sm text-left"
                 >
-                  <div className="relative aspect-square bg-light-beige overflow-hidden">
+                  <div className="relative aspect-square bg-transparent overflow-hidden flex items-center justify-center">
+                    {!loadedImages[item.id] && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-transparent">
+                        <div className="w-12 h-12 rounded-full bg-light-beige/30 animate-pulse" />
+                      </div>
+                    )}
                     <img
-                      src={productImg}
+                      src={getOptimizedImageUrl(productImg, { width: 800, cropMode: 'limit' })}
+                      srcSet={getImageSrcSet(productImg, { widths: [400, 800], cropMode: 'limit' })}
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                       alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      onLoad={() => handleImageLoad(item.id)}
+                      className={`w-full h-full object-contain p-3.5 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.12)] group-hover:scale-105 transition-all duration-500 ${
+                        loadedImages[item.id] ? 'opacity-100' : 'opacity-0'
+                      }`}
                     />
                     
                     {/* Delete trigger overlay */}
                     <button
                       onClick={() => toggleWishlist(product.id)}
-                      className="absolute top-4 right-4 bg-white/90 text-red-500 border border-light-beige hover:bg-red-50 hover:text-red-600 p-2.5 rounded-full transition-all shadow-md"
+                      className="absolute top-4 right-4 bg-white/90 text-red-500 border border-light-beige hover:bg-red-50 hover:text-red-600 p-2.5 rounded-full transition-all shadow-md z-20"
                       title="Remove Bookmark"
                     >
                       <FiTrash2 size={15} />

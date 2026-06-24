@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => ({
     drop: mode === 'production' ? ['console', 'debugger'] : [],
   },
   server: {
+    host: '127.0.0.1',
     allowedHosts: [
       '.ngrok-free.dev',
       '.ngrok-free.app',

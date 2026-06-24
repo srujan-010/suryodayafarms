@@ -57,6 +57,8 @@ model User {
   reviews           Review[]
   notifications     Notification[]
   sessions          Session[]
+  supportTickets    SupportTicket[]
+  supportMessages   SupportMessage[]
 }
 
 model Session {
@@ -141,7 +143,8 @@ model Product {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  images         ProductImage[]
+  images         String[]
+  productImages  ProductImage[]
   variants       ProductVariant[]
   cartItems      CartItem[]
   wishlistItems  WishlistItem[]
@@ -225,6 +228,7 @@ model Order {
   logistics         Json?
 
   orderItems        OrderItem[]
+  supportTickets    SupportTicket[]
 }
 
 model OrderItem {
@@ -413,4 +417,45 @@ model HomepageHero {
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model SupportTicket {
+  id           String           @id @default(uuid())
+  ticketNumber String           @unique
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId      String?
+  order        Order?           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  subject      String
+  status       TicketStatus     @default(OPEN)
+  priority     TicketPriority   @default(MEDIUM)
+  messages     SupportMessage[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model SupportMessage {
+  id        String        @id @default(uuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  role      Role          @default(CUSTOMER)
+  message   String
+  imageUrl  String?
+  createdAt DateTime      @default(now())
 }

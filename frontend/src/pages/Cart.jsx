@@ -1,20 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FiShoppingBag, FiTrash2, FiPlus, FiMinus, FiArrowRight, FiPercent } from 'react-icons/fi';
 import { useCartStore } from '../store/useCartStore';
 import { useAuthStore } from '../store/useAuthStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import api from '../utils/api';
+import { getOptimizedImageUrl } from '../utils/imageOptimizer';
+import { parseWeightToKG } from '../utils/weightParser';
 
 export default function Cart() {
   const navigate = useNavigate();
   const { cartItems, subtotal, updateQuantity, removeItem } = useCartStore();
   const { isAuthenticated } = useAuthStore();
+  const { settings, fetchSettings } = useSettingsStore();
 
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState('');
   const [couponSuccess, setCouponSuccess] = useState('');
   const [isValidating, setIsValidating] = useState(false);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   // Validate coupon code directly with the API
   const handleApplyCoupon = async (e) => {
@@ -62,7 +70,15 @@ export default function Cart() {
     sessionStorage.removeItem('appliedCoupon');
   };
 
-  // Calculate discount math
+  // Calculate weight and shipping math
+  const freeDeliveryThreshold = parseFloat(settings.freeDeliveryThreshold || '2');
+  const shippingCharge = parseFloat(settings.shippingCharge || '80');
+
+  const totalWeight = cartItems.reduce((acc, item) => {
+    const weightStr = item.variant ? item.variant.name : item.product.weight;
+    return acc + parseWeightToKG(weightStr) * item.quantity;
+  }, 0);
+
   const getDiscountAmount = () => {
     if (!appliedCoupon) return 0;
     if (appliedCoupon.discountType === 'PERCENTAGE') {
@@ -72,7 +88,9 @@ export default function Cart() {
   };
 
   const discountAmount = getDiscountAmount();
-  const finalTotal = Math.max(subtotal - discountAmount, 0);
+  const isFreeDelivery = totalWeight >= freeDeliveryThreshold;
+  const shippingFee = isFreeDelivery ? 0 : shippingCharge;
+  const finalTotal = Math.max(subtotal - discountAmount + shippingFee, 0);
 
   const handleCheckoutClick = () => {
     if (!isAuthenticated) {
@@ -135,11 +153,14 @@ export default function Cart() {
                       className="flex flex-col sm:flex-row gap-6 justify-between items-start sm:items-center border-b border-light-beige/50 pb-6 last:border-b-0 last:pb-0"
                     >
                       <div className="flex gap-4 items-center text-left">
-                        <img
-                          src={itemImg}
-                          alt={item.product.name}
-                          className="w-20 h-20 rounded-2xl object-cover border border-light-beige bg-light-beige shrink-0 shadow-sm"
-                        />
+                        <div className="w-20 h-20 bg-transparent shrink-0 flex items-center justify-center relative">
+                          <img
+                            src={getOptimizedImageUrl(itemImg, { width: 100, height: 100, cropMode: 'fit' })}
+                            alt={item.product.name}
+                            loading="lazy"
+                            className="w-full h-full object-contain p-1 filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.1)]"
+                          />
+                        </div>
                         <div className="flex flex-col gap-1.5">
                           <span className="font-serif text-base font-bold text-dark-olive leading-tight">
                             {item.product.name}
@@ -266,6 +287,36 @@ export default function Cart() {
                 )}
               </div>
 
+              {/* Weight Delivery Progress Banner */}
+              <div className="bg-white rounded-[32px] border border-light-beige shadow-sm p-6 text-left flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <span className="font-serif text-sm font-bold text-dark-olive">Total Cart Weight</span>
+                  <span className="font-sans text-xs font-semibold text-primary-green">{totalWeight.toFixed(2)} KG</span>
+                </div>
+                {totalWeight >= freeDeliveryThreshold ? (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="w-full bg-light-beige/35 rounded-full h-2 overflow-hidden">
+                      <div className="bg-primary-green h-full rounded-full transition-all duration-500" style={{ width: '100%' }} />
+                    </div>
+                    <span className="font-sans text-[10px] text-primary-green font-semibold flex items-center gap-1">
+                      🎉 Free shipping unlocked! Your order is over {freeDeliveryThreshold} KG.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="w-full bg-light-beige/35 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className="bg-sunrise-gold h-full rounded-full transition-all duration-500" 
+                        style={{ width: `${Math.min((totalWeight / freeDeliveryThreshold) * 100, 100)}%` }} 
+                      />
+                    </div>
+                    <span className="font-sans text-[10px] text-dark-text/70 leading-normal">
+                      Add <strong className="font-semibold text-sunrise-gold">{(freeDeliveryThreshold - totalWeight).toFixed(2)} KG</strong> more to unlock <strong className="font-semibold text-primary-green">FREE Delivery</strong> (Current threshold: {freeDeliveryThreshold} KG)
+                    </span>
+                  </div>
+                )}
+              </div>
+
               {/* Total breakdown card */}
               <div className="bg-white rounded-[32px] border border-light-beige shadow-sm p-6 sm:p-8 text-left flex flex-col gap-6">
                 <span className="font-serif text-lg font-bold text-dark-olive pb-4 border-b border-light-beige/50 block">
@@ -277,6 +328,11 @@ export default function Cart() {
                     <span>Subtotal Basket:</span>
                     <span className="font-semibold text-dark-olive">₹{subtotal}</span>
                   </div>
+
+                  <div className="flex justify-between">
+                    <span>Total Weight:</span>
+                    <span className="font-semibold text-dark-olive">{totalWeight.toFixed(2)} KG</span>
+                  </div>
                   
                   {appliedCoupon && (
                     <div className="flex justify-between text-primary-green font-medium">
@@ -285,11 +341,15 @@ export default function Cart() {
                     </div>
                   )}
 
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span>Shipping Logistics:</span>
-                    <span className="text-primary-green font-semibold uppercase tracking-wider text-[9px] bg-primary-green/5 px-2 py-0.5 rounded">
-                      FREE DELIVERY
-                    </span>
+                    {shippingFee === 0 ? (
+                      <span className="text-primary-green font-semibold uppercase tracking-wider text-[9px] bg-primary-green/5 px-2 py-0.5 rounded">
+                        FREE DELIVERY
+                      </span>
+                    ) : (
+                      <span className="font-semibold text-dark-olive">₹{shippingFee}</span>
+                    )}
                   </div>
                 </div>
 

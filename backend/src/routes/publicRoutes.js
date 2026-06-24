@@ -1,5 +1,6 @@
 import express from 'express';
 import prisma from '../utils/db.js';
+import { mapProduct } from '../utils/productMapper.js';
 
 const router = express.Router();
 
@@ -152,72 +153,91 @@ router.get('/homepage', async (req, res, next) => {
     const now = new Date();
 
     // 1. Fetch active campaigns matching date filters
-    const activeCampaigns = await prisma.homepageCampaign.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          {
-            startDate: null,
-            endDate: null
-          },
-          {
-            startDate: { lte: now },
-            endDate: null
-          },
-          {
-            startDate: null,
-            endDate: { gte: now }
-          },
-          {
-            startDate: { lte: now },
-            endDate: { gte: now }
-          }
-        ]
-      },
-      orderBy: { updatedAt: 'desc' }
-    });
-
-    let campaign = activeCampaigns[0] || null;
-
-    // 2. Fetch featured product details if defined in active campaign
-    if (campaign && campaign.featuredProductId) {
-      const product = await prisma.product.findUnique({
-        where: { id: campaign.featuredProductId },
-        include: { images: true, variants: true }
+    let campaign = null;
+    try {
+      const activeCampaigns = await prisma.homepageCampaign.findMany({
+        where: {
+          isActive: true,
+          OR: [
+            { startDate: null, endDate: null },
+            { startDate: { lte: now }, endDate: null },
+            { startDate: null, endDate: { gte: now } },
+            { startDate: { lte: now }, endDate: { gte: now } }
+          ]
+        },
+        orderBy: { updatedAt: 'desc' }
       });
-      if (product) {
-        campaign = {
-          ...campaign,
-          featuredProduct: product
-        };
-      }
-    }
+      campaign = activeCampaigns[0] || null;
 
-    // 2.5 Fetch active homepage hero configurations
-    let activeHeroes = await prisma.homepageHero.findMany({
-      where: { isActive: true },
-      orderBy: [
-        { isFeatured: 'desc' },
-        { slideOrder: 'asc' },
-        { updatedAt: 'desc' }
-      ]
-    });
-
-    // Populate featured products for each active hero configuration
-    for (let i = 0; i < activeHeroes.length; i++) {
-      if (activeHeroes[i].featuredProductId) {
-        const product = await prisma.product.findUnique({
-          where: { id: activeHeroes[i].featuredProductId },
-          include: { images: true, variants: true }
-        });
-        if (product) {
-          activeHeroes[i] = {
-            ...activeHeroes[i],
-            featuredProduct: product
-          };
+      // Fetch featured product details if defined in active campaign
+      if (campaign && campaign.featuredProductId) {
+        try {
+          const product = await prisma.product.findUnique({
+            where: { id: campaign.featuredProductId },
+            include: { variants: true }
+          });
+          if (product) {
+            campaign = {
+              ...campaign,
+              featuredProduct: mapProduct(product)
+            };
+          }
+        } catch (campProdErr) {
+          console.error("Error fetching campaign featured product:", campProdErr);
         }
       }
+    } catch (campaignErr) {
+      console.error("Error fetching homepage campaign:", campaignErr);
     }
+
+    // 2. Fetch active homepage hero configurations
+    let activeHeroes = [];
+    try {
+      activeHeroes = await prisma.homepageHero.findMany({
+        where: { isActive: true },
+        orderBy: [
+          { isFeatured: 'desc' },
+          { slideOrder: 'asc' },
+          { updatedAt: 'desc' }
+        ]
+      });
+
+      // Populate featured products for each active hero configuration
+      for (let i = 0; i < activeHeroes.length; i++) {
+        if (activeHeroes[i].featuredProductId) {
+          try {
+            const product = await prisma.product.findUnique({
+              where: { id: activeHeroes[i].featuredProductId },
+              include: { variants: true }
+            });
+            if (product) {
+              activeHeroes[i] = {
+                ...activeHeroes[i],
+                featuredProduct: mapProduct(product)
+              };
+            }
+          } catch (heroProdErr) {
+            console.error(`Error fetching hero featured product (${activeHeroes[i].featuredProductId}):`, heroProdErr);
+          }
+        }
+      }
+    } catch (heroErr) {
+      console.error("Error fetching homepage heroes:", heroErr);
+    }
+
+    // Helper to map DB fields to exact frontend keys (showcaseImage, offerBadge, floatingBadge)
+    const mapHeroCMSFields = (h) => {
+      if (!h) return null;
+      return {
+        ...h,
+        showcaseImage: h.heroImage,
+        offerBadge: h.offerBadgeText,
+        floatingBadge: (h.floatingBadgeTitle || h.floatingBadgeSubtitle) ? {
+          title: h.floatingBadgeTitle || '',
+          subtitle: h.floatingBadgeSubtitle || ''
+        } : null
+      };
+    };
 
     // Establish pre-seeded gorgeous fallback hero if none exists in DB
     const defaultHero = {
@@ -247,56 +267,84 @@ router.get('/homepage', async (req, res, next) => {
     };
 
     if (activeHeroes.length === 0) {
-      const firstProduct = await prisma.product.findFirst({
-        include: { images: true, variants: true }
-      });
-      if (firstProduct) {
-        defaultHero.featuredProductId = firstProduct.id;
-        defaultHero.featuredProduct = firstProduct;
+      try {
+        const firstProduct = await prisma.product.findFirst({
+          include: { variants: true }
+        });
+        if (firstProduct) {
+          defaultHero.featuredProductId = firstProduct.id;
+          defaultHero.featuredProduct = mapProduct(firstProduct);
+        }
+      } catch (firstProdErr) {
+        console.error("Error fetching first product for default hero:", firstProdErr);
       }
       activeHeroes = [defaultHero];
     }
 
-    // 2.6 Fetch slider global configurations
-    const autoRotateSetting = await prisma.websiteSetting.findUnique({
-      where: { key: 'homepage_hero_auto_rotate' }
-    });
-    const durationSetting = await prisma.websiteSetting.findUnique({
-      where: { key: 'homepage_hero_slide_duration' }
-    });
+    const mappedHeroesList = activeHeroes.map(mapHeroCMSFields);
+    const primaryHero = mappedHeroesList[0] || mapHeroCMSFields(defaultHero);
 
-    const autoRotate = autoRotateSetting ? autoRotateSetting.value === 'true' : true;
-    const slideDuration = durationSetting ? parseInt(durationSetting.value, 10) || 5 : 5;
+    // 3. Fetch slider global configurations
+    let autoRotate = true;
+    let slideDuration = 5;
+    try {
+      const autoRotateSetting = await prisma.websiteSetting.findUnique({
+        where: { key: 'homepage_hero_auto_rotate' }
+      });
+      const durationSetting = await prisma.websiteSetting.findUnique({
+        where: { key: 'homepage_hero_slide_duration' }
+      });
 
-    // 3. Fetch active homepage categories sorted by position
-    const categories = await prisma.category.findMany({
-      where: { 
-        isVisible: true,
-        slug: { not: 'uncategorized' },
-        name: { not: 'Uncategorized' }
-      },
-      include: {
-        _count: { select: { products: true } }
-      },
-      orderBy: { position: 'asc' }
-    });
+      autoRotate = autoRotateSetting ? autoRotateSetting.value === 'true' : true;
+      slideDuration = durationSetting ? parseInt(durationSetting.value, 10) || 5 : 5;
+    } catch (settingsErr) {
+      console.error("Error fetching homepage settings:", settingsErr);
+    }
 
-    // 3.5 Fetch active homepage collections sorted by sortOrder
-    const collections = await prisma.homepageCollection.findMany({
-      where: { isActive: true },
-      orderBy: { sortOrder: 'asc' }
-    });
+    // 4. Fetch active homepage categories sorted by position
+    let categories = [];
+    try {
+      categories = await prisma.category.findMany({
+        where: { 
+          isVisible: true,
+          slug: { not: 'uncategorized' },
+          name: { not: 'Uncategorized' }
+        },
+        include: {
+          _count: { select: { products: true } }
+        },
+        orderBy: { position: 'asc' }
+      });
+    } catch (categoriesErr) {
+      console.error("Error fetching categories for homepage:", categoriesErr);
+    }
 
-    // 4. Fetch custom homepage section ordering
-    const sectionOrderSetting = await prisma.websiteSetting.findUnique({
-      where: { key: 'homepage_section_order' }
-    });
+    // 5. Fetch active homepage collections sorted by sortOrder
+    let collections = [];
+    try {
+      collections = await prisma.homepageCollection.findMany({
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' }
+      });
+    } catch (collectionsErr) {
+      console.error("Error fetching collections for homepage:", collectionsErr);
+    }
+
+    // 6. Fetch custom homepage section ordering
+    let sectionOrderSetting = null;
+    try {
+      sectionOrderSetting = await prisma.websiteSetting.findUnique({
+        where: { key: 'homepage_section_order' }
+      });
+    } catch (sectionOrderErr) {
+      console.error("Error fetching section order setting:", sectionOrderErr);
+    }
 
     res.status(200).json({
       success: true,
       campaign,
-      hero: activeHeroes[0] || defaultHero,
-      heroes: activeHeroes,
+      hero: primaryHero,
+      heroes: mappedHeroesList,
       autoRotate,
       slideDuration,
       categories,
@@ -329,7 +377,10 @@ router.get('/settings', async (req, res, next) => {
       socialTwitter: 'https://twitter.com/suryodayafarms',
       socialFacebook: 'https://facebook.com/suryodayafarms',
       socialInstagram: 'https://instagram.com/suryodayafarms',
-      socialYoutube: 'https://youtube.com/suryodayafarms'
+      socialYoutube: 'https://youtube.com/suryodayafarms',
+      freeDeliveryThreshold: '2',
+      shippingCharge: '80',
+      serviceableStates: 'Telangana, Andhra Pradesh'
     };
 
     res.status(200).json({
