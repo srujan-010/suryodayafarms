@@ -1554,7 +1554,7 @@ export default function Home() {
             </h2>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-6 text-center">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-6 text-center">
             <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 sm:p-6 space-y-2.5 sm:space-y-4 hover:bg-white/10 transition duration-300">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#C68A2B]/20 text-[#C68A2B] flex items-center justify-center mx-auto text-lg sm:text-xl shadow-inner shrink-0">
                 🧪
@@ -1599,18 +1599,6 @@ export default function Home() {
                 <h4 className="font-serif text-xs sm:text-sm font-bold uppercase tracking-wider text-white">No Preservatives</h4>
                 <p className="text-[9px] sm:text-[10px] text-white/85 leading-relaxed font-light line-clamp-2">
                   Absolutely no color stabilizers, bleach refinements, or added artificial flavorings.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 sm:p-6 space-y-2.5 sm:space-y-4 hover:bg-white/10 transition duration-300">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#C68A2B]/20 text-[#C68A2B] flex items-center justify-center mx-auto text-lg sm:text-xl shadow-inner shrink-0">
-                👨‍🌾
-              </div>
-              <div className="space-y-1">
-                <h4 className="font-serif text-xs sm:text-sm font-bold uppercase tracking-wider text-white">Direct From Farmers</h4>
-                <p className="text-[9px] sm:text-[10px] text-white/85 leading-relaxed font-light line-clamp-2">
-                  Direct revenue loops feed back to our cooperative homestead growers in Wardha.
                 </p>
               </div>
             </div>
