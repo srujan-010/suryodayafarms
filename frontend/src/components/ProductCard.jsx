@@ -331,121 +331,93 @@ export default function ProductCard({ product, onQuickView }) {
       <div className="p-2 sm:p-4.5 flex-grow flex flex-col justify-between gap-1 sm:gap-2.5 product-card-details">
         <div className="flex flex-col gap-1 sm:gap-1.5">
           {/* Category Tag & Ratings */}
-          <div className="flex items-center justify-between text-[8px] sm:text-[10px] text-stone-400 font-sans font-medium product-card-meta">
-            <span className="text-[#4E641A] font-bold uppercase tracking-wider flex items-center gap-0.5">
-              <span>{getCategoryEmoji(categoryName)}</span>
-              <span>{categoryName}</span>
+          <div className="flex items-center justify-between text-[8px] sm:text-[10px] text-[#4E641A] font-sans font-medium product-card-meta">
+            <span className="bg-[#4E641A]/5 text-[#4E641A] border border-[#4E641A]/15 text-[8px] sm:text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-md product-category-badge leading-none">
+              {categoryName}
             </span>
             {product.totalReviews > 0 ? (
-              <span className="flex items-center gap-0.5 text-sunrise-gold">
-                <FiStar className="w-3 h-3 fill-sunrise-gold text-sunrise-gold" />
-                <span className="text-dark-text/75 font-bold">{product.averageRating}</span>
-                <span className="text-stone-400/70 font-normal">({product.totalReviews})</span>
+              <span className="flex items-center gap-0.5 text-sunrise-gold text-[9px] sm:text-[10px] font-bold product-card-rating">
+                <FiStar className="w-2.5 h-2.5 fill-sunrise-gold text-sunrise-gold sm:w-3 sm:h-3" />
+                <span className="text-dark-text/75">{product.averageRating}</span>
+                <span className="text-stone-400/70 font-normal hidden sm:inline">({product.totalReviews})</span>
               </span>
             ) : (
-              <span className="italic text-stone-400/80">New Harvest</span>
+              <span className="italic text-stone-450/80 text-[8px] sm:text-[9px] hidden sm:inline">New Harvest</span>
             )}
           </div>
 
           {/* Product Name */}
           <h3 
             onClick={handleCardClick}
-            className="font-serif text-[11px] sm:text-base font-bold text-[#2F3B0C] group-hover:text-[#4E641A] transition leading-tight line-clamp-1 cursor-pointer product-card-title"
+            className="font-serif text-[13px] sm:text-base font-bold text-[#2F3B0C] group-hover:text-[#4E641A] transition leading-tight line-clamp-2 cursor-pointer product-card-title mt-1"
           >
             {product.name}
           </h3>
 
+          {/* Mobile-only Price Section */}
+          <div className="flex items-baseline gap-1.5 mt-1 sm:hidden product-card-price-mobile">
+            <span className="text-[16px] font-black text-[#4E641A] leading-none">
+              ₹{selectedVariant.price}
+            </span>
+            {selectedVariant.mrp > selectedVariant.price && (
+              <span className="text-[12px] line-through text-stone-450 font-medium leading-none">
+                ₹{selectedVariant.mrp}
+              </span>
+            )}
+          </div>
+
           {/* Product Benefit Line */}
-          <p className="text-[10px] text-stone-500 font-medium leading-none truncate select-none hidden sm:block">
+          <p className="text-[10px] text-stone-500 font-medium leading-none truncate select-none hidden sm:block mt-1">
             {getProductBenefits(product)}
           </p>
 
           {/* Size Pills */}
           {variants.length > 1 ? (
-            <>
-              <div className="flex flex-wrap gap-1 mt-1 hidden sm:flex" onClick={(e) => e.stopPropagation()}>
-                {variants.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    onClick={() => setSelectedVariant(v)}
-                    className={`px-2 py-0.5 text-[9px] font-bold rounded-md border transition-all duration-200 ${
-                      selectedVariant.id === v.id
-                        ? 'bg-[#4E641A] border-[#4E641A] text-white shadow-sm'
-                        : 'bg-white border-[#EAE4D8] text-stone-600 hover:bg-stone-50'
-                    }`}
-                  >
-                    {v.name}
-                  </button>
-                ))}
-              </div>
-              {/* Mobile view selector */}
-              {variants.length <= 3 ? (
-                /* Segmented Pills for 2-3 variants */
-                <div className="flex flex-wrap gap-1.5 mt-1 sm:hidden" onClick={(e) => e.stopPropagation()}>
-                  {variants.map((v) => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => setSelectedVariant(v)}
-                      className={`product-card-segmented-btn border ${
-                        selectedVariant.id === v.id
-                          ? 'bg-[#4E641A] border-[#4E641A] text-white shadow-sm'
-                          : 'bg-[#FAF7F2] border-[#EAE4D8] text-dark-olive/80 hover:bg-light-beige'
-                      }`}
-                    >
-                      {v.name}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                /* Premium Dropdown Pill for > 3 variants */
-                <div className="relative inline-block mt-1 sm:hidden" onClick={(e) => e.stopPropagation()}>
-                  <select
-                    value={selectedVariant.id}
-                    onChange={(e) => {
-                      const vId = e.target.value;
-                      const found = variants.find(v => v.id === vId);
-                      if (found) setSelectedVariant(found);
-                    }}
-                    className="appearance-none pr-6 rounded-full focus:outline-none cursor-pointer text-left product-card-weight-selector"
-                  >
-                    {variants.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-[6px] text-dark-olive/50">
-                    ▼
-                  </div>
-                </div>
-              )}
-            </>
+            <div 
+              className="flex flex-row sm:flex-wrap gap-1.5 mt-2 overflow-x-auto no-scrollbar whitespace-nowrap w-full scroll-smooth product-card-sizes-container"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {variants.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setSelectedVariant(v)}
+                  className={`px-2.5 py-1 text-[10px] font-bold rounded-md border transition-all duration-200 shrink-0 select-none ${
+                    selectedVariant.id === v.id
+                      ? 'bg-[#4E641A] border-[#4E641A] text-white shadow-sm'
+                      : 'bg-white border-[#EAE4D8] text-[#2F3B0C]/80 hover:bg-stone-50'
+                  }`}
+                >
+                  {v.name}
+                </button>
+              ))}
+            </div>
           ) : (
-            <span className="text-[9px] sm:text-[10px] font-bold text-stone-400 uppercase tracking-wider mt-0.5 sm:mt-1 block product-card-weight">
+            <span className="text-[10px] font-bold text-stone-450 uppercase tracking-wider mt-2 block product-card-weight">
               {selectedVariant.name}
             </span>
           )}
         </div>
 
         {/* Pricing & CTA Block */}
-        <div className="pt-2 border-t border-stone-100 flex flex-col gap-2 mt-auto w-full sm:flex-row sm:items-center sm:justify-between sm:pt-3 product-card-action-bar">
-          <div className="flex flex-row items-baseline justify-between sm:flex-col sm:items-start leading-none w-full sm:w-auto">
-            <span className="text-[8px] sm:text-[9px] font-bold text-stone-400 uppercase tracking-wider leading-none hidden sm:inline">Price</span>
-            <div className="flex items-baseline gap-1 mt-0.5 sm:mt-1">
-              <span className="text-sm sm:text-base font-extrabold text-[#4E641A]">
+        <div className="product-card-action-bar pt-2 border-t border-stone-100 sm:pt-3 flex flex-row items-center justify-between mt-auto w-full">
+          {/* Desktop-only Price Column */}
+          <div className="hidden sm:flex flex-col items-start leading-none">
+            <span className="text-[9px] font-bold text-stone-450 uppercase tracking-wider leading-none">Price</span>
+            <div className="flex items-baseline gap-1 mt-1">
+              <span className="text-base font-extrabold text-[#4E641A]">
                 ₹{selectedVariant.price}
               </span>
               {selectedVariant.mrp > selectedVariant.price && (
-                <span className="text-[10px] sm:text-[11px] line-through text-stone-400 font-medium">
+                <span className="text-[11px] line-through text-stone-400 font-medium">
                   ₹{selectedVariant.mrp}
                 </span>
               )}
             </div>
           </div>
-          
-          <div className="w-full sm:w-24 md:w-28 h-9 relative overflow-hidden select-none">
+
+          {/* Add to Cart Button Container */}
+          <div className="product-card-btn-container w-full sm:w-28 md:w-32 h-[42px] sm:h-9 relative overflow-hidden select-none">
             <AnimatePresence mode="wait">
               {!cartItem ? (
                 <motion.button
@@ -457,9 +429,9 @@ export default function ProductCard({ product, onQuickView }) {
                   type="button"
                   onClick={handleAddToCart}
                   disabled={isOutOfStock || isAdding}
-                  className={`px-3 py-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider rounded-xl transition-all duration-350 flex items-center justify-center space-x-1.5 shadow-sm border-none cursor-pointer select-none product-card-add-btn h-full w-full ${
+                  className={`product-card-add-btn px-3 py-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider rounded-xl transition-all duration-350 flex items-center justify-center space-x-1.5 border-none cursor-pointer select-none h-full w-full ${
                     isOutOfStock 
-                      ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
+                      ? 'bg-stone-100 text-stone-450 cursor-not-allowed'
                       : 'bg-[#4E641A] hover:bg-[#2F3B0C] text-white hover:scale-[1.02] active:scale-[0.98]'
                   }`}
                 >
@@ -475,7 +447,7 @@ export default function ProductCard({ product, onQuickView }) {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ duration: 0.15 }}
-                  className="flex items-center justify-between bg-white border border-[#4E641A] text-[#4E641A] rounded-xl h-full shadow-sm w-full overflow-hidden"
+                  className="product-card-qty-selector flex items-center justify-between bg-white border border-[#4E641A] text-[#4E641A] rounded-xl h-full shadow-sm w-full overflow-hidden"
                 >
                   <button
                     type="button"

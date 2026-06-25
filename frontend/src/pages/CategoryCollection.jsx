@@ -213,7 +213,7 @@ export default function CategoryCollection() {
                 </Link>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 lg:gap-8">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-3 sm:gap-6 lg:gap-8">
                 <AnimatePresence mode="popLayout">
                   {productsList.map((product) => (
                     <ProductCard key={product.id} product={product} />

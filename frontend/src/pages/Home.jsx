@@ -1530,7 +1530,7 @@ export default function Home() {
             <button onClick={() => { setActiveCategory({ id: 'All', name: 'All' }); }} className="mt-2 text-xs font-bold text-[#4E641A] underline">Reset Filters</button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 lg:gap-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-3 sm:gap-6 lg:gap-8">
             {filteredProducts.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}

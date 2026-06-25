@@ -338,10 +338,15 @@
 
   /* Premium Balanced Product Cards Overrides */
   .product-card-wrapper {
-    border-radius: 22px !important;
+    border-radius: 16px !important; /* 11. Card border radius: 16px */
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
     padding: 0 !important;
     transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    height: 100% !important; /* 12. Ensure all product cards have equal height */
+    overflow: hidden !important;
   }
 
   .product-card-wrapper:hover,
@@ -350,18 +355,29 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
   }
 
+  /* 2. Product image adjustments */
   .product-card-image-wrapper {
-    aspect-ratio: 1 / 1 !important;
-    max-height: 205px !important;
+    aspect-ratio: 4 / 3 !important; /* A wider, shorter aspect ratio to reduce card height by 35-40% */
+    max-height: 130px !important; /* Bounds the image height to prevent tall cards */
     width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding-top: 6px !important; /* Reduced top padding */
+    padding-bottom: 0 !important;
     overflow: hidden !important;
+    background: transparent !important;
   }
 
   .product-card-image {
-    object-fit: cover !important;
-    width: 100% !important;
-    height: 100% !important;
+    width: 85% !important; /* Width: 85% */
+    height: auto !important; /* Height: auto */
+    max-height: 120px !important;
+    object-fit: contain !important; /* Keep contain for packaging sharpness */
+    padding: 0 !important;
+    margin: 0 auto !important; /* Center aligned */
     transition: transform 0.2s ease !important;
+    display: block !important;
   }
 
   .product-card-wrapper:hover .product-card-image,
@@ -373,16 +389,16 @@
   .product-card-image-wrapper > div.absolute {
     background: transparent !important;
     align-items: flex-end !important;
-    padding-bottom: 12px !important;
+    padding-bottom: 8px !important;
   }
   .product-card-image-wrapper button {
     background: rgba(255, 255, 255, 0.8) !important;
     border: 1px solid rgba(255, 255, 255, 0.4) !important;
     backdrop-filter: blur(6px) !important;
     -webkit-backdrop-filter: blur(6px) !important;
-    padding: 6px 12px !important;
+    padding: 4px 10px !important;
     border-radius: 999px !important;
-    font-size: 10px !important;
+    font-size: 9px !important;
     color: var(--color-dark-olive) !important;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05) !important;
     transform: none !important;
@@ -390,13 +406,13 @@
 
   /* Wishlist Button styling on mobile */
   .product-card-wishlist {
-    width: 40px !important;
-    height: 40px !important;
-    top: 10px !important;
-    right: 10px !important;
+    width: 34px !important; /* slightly smaller on mobile to match compact card */
+    height: 34px !important;
+    top: 8px !important;
+    right: 8px !important;
     border-radius: 9999px !important;
-    background: rgba(255, 255, 255, 0.45) !important;
-    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    background: rgba(255, 255, 255, 0.65) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
     backdrop-filter: blur(8px) !important;
     -webkit-backdrop-filter: blur(8px) !important;
     display: flex !important;
@@ -407,168 +423,185 @@
   }
 
   .product-card-wishlist svg {
-    width: 16px !important;
-    height: 16px !important;
+    width: 14px !important;
+    height: 14px !important;
   }
 
   .product-card-discount-badge {
     font-size: 7px !important;
     padding: 2px 4px !important;
-    bottom: 6px !important;
-    left: 6px !important;
+    bottom: 4px !important;
+    left: 4px !important;
   }
 
   .product-card-dynamic-badge {
     font-size: 7px !important;
     padding: 2px 4px !important;
-    top: 6px !important;
-    left: 6px !important;
+    top: 4px !important;
+    left: 4px !important;
   }
 
+  /* 10. Card padding: Reduce by 30% */
   .product-card-details {
-    padding: 12px !important;
-    padding-top: 12px !important;
-    gap: 8px !important;
-  }
-
-  .product-card-meta {
-    font-size: 11px !important;
-  }
-
-  .product-card-meta span {
-    font-weight: 600 !important;
-  }
-
-  .product-card-title {
-    font-size: 17px !important;
-    font-weight: 600 !important;
-    line-height: 1.3 !important;
-    min-height: 44.2px !important;
-    display: -webkit-box !important;
-    -webkit-box-orient: vertical !important;
-    -webkit-line-clamp: 2 !important;
-    overflow: hidden !important;
-  }
-
-  .product-card-weight {
-    font-size: 13px !important;
-    opacity: 0.7 !important;
-    margin-top: 2px !important;
-  }
-
-  .product-card-weight-selector {
-    height: 32px !important;
-    padding-left: 12px !important;
-    padding-right: 22px !important;
-    font-size: 13px !important;
-    border-radius: 999px !important;
-    font-weight: 600 !important;
-    color: var(--color-dark-olive) !important;
-    background-color: #FAF7F2 !important;
-    border: 1px solid #EAE4D8 !important;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
-    transition: all 0.2s ease !important;
-    width: auto !important;
-    display: inline-block !important;
-    margin-top: 2px !important;
-  }
-
-  .product-card-weight-selector:active {
-    border-color: #4E641A !important;
-    box-shadow: 0 2px 6px rgba(78, 100, 26, 0.1) !important;
-  }
-
-  .product-card-segmented-btn {
-    height: 28px !important;
-    padding-left: 10px !important;
-    padding-right: 10px !important;
-    border-radius: 999px !important;
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    transition: all 0.2s ease !important;
-  }
-
-  .product-card-action-bar {
+    padding: 10px !important; /* 30% reduction from 16px */
     padding-top: 8px !important;
-    margin-top: 6px !important;
-    border-top: 1px solid var(--color-light-beige) !important;
-    gap: 6px !important;
-    align-items: center !important;
-  }
-
-  /* Price Column Div */
-  .product-card-action-bar > div:first-child {
+    padding-bottom: 0 !important; /* No bottom padding so sticky CTA sits right at the bottom */
+    gap: 4px !important; /* tight layout */
     display: flex !important;
     flex-direction: column !important;
+    flex-grow: 1 !important;
   }
 
-  /* Price Label */
-  .product-card-action-bar > div:first-child > span {
-    font-size: 11px !important;
+  /* 4. Category label: small badge above title */
+  .product-category-badge {
+    font-size: 8px !important;
+    font-weight: 800 !important;
     letter-spacing: 0.08em !important;
-    line-height: 1 !important;
-    margin-bottom: 2px !important;
-    opacity: 0.75 !important;
+    background-color: rgba(78, 100, 26, 0.06) !important;
+    border: 1px solid rgba(78, 100, 26, 0.15) !important;
+    color: #4E641A !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    display: inline-block !important;
+    width: fit-content !important;
   }
 
-  /* Price Values Container */
-  .product-card-action-bar > div:first-child > div {
+  .product-card-rating {
+    font-size: 9px !important;
+    font-weight: 700 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 2px !important;
+  }
+
+  /* 6. Product title: Max 2 lines, line-clamp, 18px font size */
+  .product-card-title {
+    font-size: 18px !important; /* Font size: 18px */
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
+    display: -webkit-box !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important; /* Maximum 2 lines */
+    overflow: hidden !important;
+    min-height: auto !important; /* Remove excessive height/whitespace */
+    margin-top: 4px !important;
+    margin-bottom: 0 !important; /* 3. Remove excessive whitespace below product title */
+  }
+
+  /* 7. Price section: Place immediately below title, no large margins */
+  .product-card-price-mobile {
+    margin-top: 2px !important;
+    margin-bottom: 2px !important;
     display: flex !important;
     align-items: baseline !important;
     gap: 6px !important;
   }
 
-  /* Current Price */
-  .product-card-action-bar > div:first-child > div > span:first-child {
-    font-size: 18px !important;
-    font-weight: 700 !important;
-    line-height: 1 !important;
-    color: #4E641A !important;
+  /* 8. Size selector pills: Horizontal layout, single row, scroll if needed, never wrap */
+  .product-card-sizes-container {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important; /* Never wrap into multiple rows */
+    overflow-x: auto !important; /* Scroll horizontally if needed */
+    scrollbar-width: none !important; /* Hide scrollbar for clean look */
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+    gap: 6px !important;
+    margin-top: 4px !important;
+    margin-bottom: 6px !important;
+    white-space: nowrap !important;
   }
 
-  /* Old Price */
-  .product-card-action-bar > div:first-child > div > span.line-through {
-    font-size: 13px !important;
-    opacity: 0.55 !important;
-    text-decoration: line-through !important;
-    font-weight: 500 !important;
+  .product-card-sizes-container::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .product-card-sizes-container button {
+    flex-shrink: 0 !important; /* Never shrink pills */
+    height: 26px !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+    border-radius: 6px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+  }
+
+  .product-card-weight {
+    font-size: 10px !important;
+    color: #888888 !important;
+    margin-top: 2px !important;
+    margin-bottom: 4px !important;
+    font-weight: 700 !important;
+  }
+
+  /* 9. Add to Cart button / Qty Selector sticky at card bottom, full width, 42px height */
+  .product-card-action-bar {
+    padding-top: 0 !important;
+    margin-top: auto !important;
+    border-top: none !important;
+    width: 100% !important;
+  }
+
+  .product-card-btn-container {
+    width: 100% !important;
+    height: 42px !important; /* Height: 42px */
+    margin: 0 !important;
   }
 
   .product-card-add-btn {
-    height: 46px !important;
-    min-width: 88px !important;
-    border-radius: 16px !important;
-    font-size: 15px !important;
-    padding: 0 10px !important;
-    display: inline-flex !important;
+    height: 42px !important; /* Height: 42px */
+    min-height: 42px !important;
+    width: 100% !important; /* Full width */
+    border-radius: 0 0 15px 15px !important; /* Sticky at card bottom, matching card corner radius */
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.05em !important;
+    padding: 0 !important;
+    display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     gap: 4px !important;
+    border: none !important;
+    box-shadow: none !important;
   }
 
-  /* Floating WhatsApp Button Override */
+  .product-card-qty-selector {
+    height: 42px !important; /* Height: 42px */
+    width: 100% !important;
+    border-radius: 0 0 15px 15px !important; /* Sticky at card bottom */
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    border-top: 1px solid #4E641A !important;
+  }
+
+  .product-card-qty-selector button {
+    height: 100% !important;
+    min-height: 42px !important;
+  }
+
+  /* WHATSAPP BUTTON: Reduce size to 52px, move 12px from bottom/right, prevent overlap */
   .whatsapp-floating-btn {
-    bottom: 18px !important;
-    right: 14px !important;
-    width: 44px !important;
-    height: 44px !important;
+    bottom: 12px !important; /* Move 12px from bottom */
+    right: 12px !important; /* Move 12px from right */
+    width: 52px !important; /* Reduce size to 52px */
+    height: 52px !important; /* Reduce size to 52px */
     padding: 0 !important;
     border-radius: 9999px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
+    box-shadow: 0 4px 16px rgba(37, 211, 102, 0.3) !important;
+    z-index: 50 !important; /* High z-index to prevent overlap */
   }
 
   .whatsapp-floating-btn span {
-    display: none !important;
+    display: none !important; /* Hide text on mobile */
   }
 
   .whatsapp-floating-btn svg {
-    width: 20px !important;
-    height: 20px !important;
+    width: 26px !important; /* Centered icon */
+    height: 26px !important;
   }
 
   /* Header Height & Padding Overrides */
