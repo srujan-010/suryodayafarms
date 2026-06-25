@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => ({
     ],
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'https://suryodayafarms.onrender.com',
         changeOrigin: true,
         secure: false,
       }
